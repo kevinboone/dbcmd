@@ -1,0 +1,60 @@
+.\" Copyright (C) 2017 Kevin Boone 
+.\" Permission is granted to any individual or institution to use, copy, or
+.\" redistribute this software so long as all of the original files are
+.\" included, that it is not sold for profit, and that this copyright notice
+.\" is retained.
+.\"
+.TH dbcmd-delete 1 "March 2017"
+.SH NAME
+Delete file or folder from Dropbox
+.SH SYNOPSIS
+.B dbcmd 
+delete\ [options]\ {remote_path} 
+.PP
+
+.SH DESCRIPTION
+\fIdbcmd delete\fR deletes a file or a folder from the Dropbox server. 
+
+.SH EXAMPLE
+
+.BI dbcmd\ delete\ /docs/accounts/
+
+Delete the specified folder and all its files and subfolders
+
+.SH "OPTIONS"
+.TP
+.BI -a,\-\-auth
+Force a re-authentication against the Dropbox server, and get a new
+authentication token. The token is stored in 
+\fI$HOME/.dbcmdr_token\rR.
+.LP
+
+.SH NOTES
+
+.SS Folder deletion is recursive 
+
+Caution should be exercised when running this command on a folder, as it will
+delete the folder and everything underneath it, without much warning.
+
+.SS Wildcards are not supported
+
+Unlike the \fIget\fR and \fIput\fR commands, the \fIdelete\fR command does
+not support wildcards; it is not possible, for example, to delete all the files
+matching a specific pattern from a folder. 
+
+.SS Authentication
+
+This utility, like all that use the Dropbox API, uses token-based
+authentication against the Dropbox server. It will prompt for a token
+the first time it is executed, and store the token for future use.
+See 
+.SS \fIdbcmd(1)\fR 
+for more details.
+
+
+.SH SEE ALSO 
+
+.SS \fIdbcmd(1)\fR 
+
+
+.\" end of file

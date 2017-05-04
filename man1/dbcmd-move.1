@@ -1,0 +1,64 @@
+.\" Copyright (C) 2017 Kevin Boone 
+.\" Permission is granted to any individual or institution to use, copy, or
+.\" redistribute this software so long as all of the original files are
+.\" included, that it is not sold for profit, and that this copyright notice
+.\" is retained.
+.\"
+.TH dbcmd-move 1 "May 2017"
+.SH NAME
+Move a file or folder within Dropbox
+.SH SYNOPSIS
+.B dbcmd 
+move\ [options]\ {old_path}\ {new_path}
+.PP
+
+.SH DESCRIPTION
+\fIdbcmd move\fR moves or renames a file or folder on the dropbox server 
+
+.SH EXAMPLE
+
+.BI dbcmd\ move\ /docs/may2017.doc\ /docs/accounts/may2017.doc
+
+Moves a file from one folder to another. Note that the target
+filename must be supplied.
+
+.SH "OPTIONS"
+.TP
+.BI -a,\-\-auth
+Force a re-authentication against the Dropbox server, and get a new
+authentication token. The token is stored in 
+\fI$HOME/.dbcmdr_token\rR.
+.LP
+
+.SH NOTES
+
+.SS Wildcards are not supported
+
+Unlike the \fIget\fR and \fIput\fR commands, the \fImove\fR command does
+not support wildcards; it operates on a single file or a single folder.
+
+ 
+.SS Target file or folder must be given
+
+When moving a file or subfolder between folders, the name of the
+new file or folder must be given. \fIdbcmd\fR won't assume (because
+the Dropbox API does not) that the name of the file or folder is to be
+retained in its new location. 
+
+
+.SS Authentication
+
+This utility, like all that use the Dropbox API, uses token-based
+authentication against the Dropbox server. It will prompt for a token
+the first time it is executed, and store the token for future use.
+See 
+.SS \fIdbcmd(1)\fR 
+for more details.
+
+
+.SH SEE ALSO 
+
+.SS \fIdbcmd(1)\fR 
+
+
+.\" end of file

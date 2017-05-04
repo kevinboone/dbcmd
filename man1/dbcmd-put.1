@@ -1,0 +1,95 @@
+.\" Copyright (C) 2017 Kevin Boone 
+.\" Permission is granted to any individual or institution to use, copy, or
+.\" redistribute this software so long as all of the original files are
+.\" included, that it is not sold for profit, and that this copyright notice
+.\" is retained.
+.\"
+.TH dbcmd-put 1 "March 2017"
+.SH NAME
+Upload files to Dropbox
+.SH SYNOPSIS
+.B dbcmd 
+put\ [options]\ {local_path}\ [remote_path] 
+.PP
+
+.SH DESCRIPTION
+\fIdbcmd put\fR uploads one or more files to the Dropbox server, 
+attempting to maintain a folder structure on the server that matches
+the loocal filesystem. The 
+\fIlocal-path\fR argument can specify a single file, a directory, or
+a file pattern with wildcards. Unless a single file is specified, the
+\fI[remote-path]\fR argument must denote a Dropbox folder that already
+exists. This folder name \fImust\fR start and end with a forward-slash
+(/) character. 
+
+This command will not upload files which have the same SHA-256 hash as
+they have on the server -- these are deemed to be unchanged. It will never
+delete remote files that don't have counterparts on the local filesystem -- 
+files are only ever added.  
+
+This command is not intended to synchronize an entire Dropbox account;
+rather it is intended to upload 
+particular files or directories that have been modified locally. 
+
+.SH EXAMPLE
+
+.BI dbcmd\ -r\ put\ accounts/*.doc\ /docs/accounts/ 
+
+Upload files that match pattern \fI*.doc\fR from directory \fIaccounts/\fR 
+on the 
+local filesystem, maintaining
+the same folder structure in the remote directory \fI/docs/accounts/\fR.
+
+.SH "OPTIONS"
+.TP
+.BI -a,\-\-auth
+Force a re-authentication against the Dropbox server, and get a new
+authentication token. The token is stored in 
+\fI$HOME/.dbcmdr_token\rR.
+.LP
+.TP
+.BI -r,\-\-recursive
+Upload directories recursively
+.LP
+
+.SH NOTES
+
+.SS Folder naming 
+
+Names that refer to Dropbox folders \fImust\fR end in a forward
+slash (/) in this utility. This is true even if the folder exists.
+ 
+Unlike \fIrsync(1)\fR, this utility will accept file wildcard characters in
+a directory expansion (as shown in the example above). Only files matching
+the pattern will be uploaded.
+
+.SS File size limit 
+
+This utility cannot upload files larger than 150Mb. This limit is imposed
+by the Dropbox HTTP API.
+
+.SS Timestamps
+
+The timestamp set on the file will be the time it is accepted by the
+server. 
+It is not possible to synchronize timestamps, and not necessary for
+correct local/remote synchronization, because the
+Dropbox sync process uses hashes to determine whether
+a file is up to date.
+
+.SS Authentication
+
+This utility, like all that use the Dropbox API, uses token-based
+authentication against the Dropbox server. It will prompt for a token
+the first time it is executed, and store the token for future use.
+See 
+.SS \fIdbcmd(1)\fR 
+for more details.
+
+
+.SH SEE ALSO 
+
+.SS \fIdbcmd(1)\fR 
+
+
+.\" end of file

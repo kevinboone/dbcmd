@@ -1,0 +1,11 @@
+# Build dbcmd for Android, using the Google NDK, and package as a .deb archive
+DEB=kbdbcmd_0.0.1_kbox3.deb
+C=/home/kevin/lib/android-9-toolchain_2/bin/arm-linux-androideabi-gcc
+all:
+	make CC=$(C) DESTDIR=image/usr all install
+	mkdir -p out
+	tar cfz out/data.tar.gz -C image "." 
+	tar cfz out/control.tar.gz ./control 
+	echo "2.0" > out/debian-binary
+	rm -f $(DEB) 	
+	ar rcs $(DEB) out/debian-binary out/data.tar.gz out/control.tar.gz 

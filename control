@@ -1,0 +1,7 @@
+Package: kbdbcmd
+Version: 0.0.1
+Section: utilities
+Priority: optional
+Architecture: arm
+Depends: curl
+Description: Command-line client for Dropbox

@@ -1,0 +1,77 @@
+.\" Copyright (C) 2017 Kevin Boone 
+.\" Permission is granted to any individual or institution to use, copy, or
+.\" redistribute this software so long as all of the original files are
+.\" included, that it is not sold for profit, and that this copyright notice
+.\" is retained.
+.\"
+.TH dbcmd-list 1 "March 2017"
+.SH NAME
+List files on the Dropbox server
+.SH SYNOPSIS
+.B dbcmd 
+list\ [options]\ [remote_path] 
+.PP
+
+.SH DESCRIPTION
+\fIdbcmd list\fR lists the contents of a folder on the Dropbox
+server. If no folder is specified, the top-level ("root") 
+folder is displayed.
+
+.SH EXAMPLE
+
+.BI dbcmd\ -r\ list\ /docs/accounts/
+
+List all files in the folder \fI/docs/accounts\fR and its
+subfolders on the server.
+
+.SH "OPTIONS"
+.TP
+.BI -a,\-\-auth
+Force a re-authentication against the Dropbox server, and get a new
+authentication token. The token is stored in 
+\fI$HOME/.dbcmdr_token\rR.
+.LP
+.TP
+.BI -l,\-\-long
+Display in long format, one file to a line
+.LP
+.TP
+.BI -r,\-\-recursive
+List folders recursively
+.LP
+.TP
+.BI -w,\-\-width
+set the number of screen columns, for formatting purposes.
+.LP
+
+.SH NOTES
+
+.SS Recursive listing
+
+When listing folders recursively, all the subfolders are
+listed first, followed by all the files. This is the output provided
+by the Dropbox API -- files are not grouped into folders. 
+So for recursive operation, the full pathname of each file is shown,
+and output is always in "long" (one line per file) format.
+
+.SS Authentication
+
+This utility, like all that use the Dropbox API, uses token-based
+authentication against the Dropbox server. It will prompt for a token
+the first time it is executed, and store the token for future use.
+See 
+.SS \fIdbcmd(1)\fR 
+for more details.
+
+.SS Screen width 
+
+Other than in "long" mode, output is formatted in columns to fill the screen. The
+utility attempts to guess the screen width using system calls. If this is inaccurate,
+use the \fI--width\fR switch to set the width.
+
+.SH SEE ALSO 
+
+.SS \fIdbcmd(1)\fR 
+
+
+.\" end of file

@@ -1,0 +1,62 @@
+.\" Copyright (C) 2017 Kevin Boone 
+.\" Permission is granted to any individual or institution to use, copy, or
+.\" redistribute this software so long as all of the original files are
+.\" included, that it is not sold for profit, and that this copyright notice
+.\" is retained.
+.\"
+.TH dbcmd-info 1 "March 2017"
+.SH NAME
+Show information about a specific file or folder on the Dropbox
+server
+.SH SYNOPSIS
+.B dbcmd 
+info\ [options]\ {remote_path} 
+.PP
+
+.SH DESCRIPTION
+\fIdbcmd info\fR displays information about a specific file or folder 
+on the Dropbox server. Use \fIkbdmcmd list\fI to list files.
+A folder name end in a forward slash (/), even if a folder 
+exists with that name.
+
+.SH EXAMPLE
+
+.BI dbcmd\ info\ /docs/accounts/march2017.doc
+
+.SH "OPTIONS"
+.TP
+.BI -a,\-\-auth
+Force a re-authentication against the Dropbox server, and get a new
+authentication token. The token is stored in 
+\fI$HOME/.dbcmdr_token\rR.
+.LP
+.TP
+.BI -r,\-\-recursive
+When applied to a folder, count the files and subfolders recursively. This 
+can be very slow when there are large numbers of files.
+.LP
+
+.SH NOTES
+
+.SS Folder information 
+
+The utility counts the number of files, number of subfolders, and the total
+storage. If the \fI--recursive\fR switch is given, it will expand subfolders; otherwise
+only the specific folder is displayed.
+
+.SS Authentication
+
+This utility, like all that use the Dropbox API, uses token-based
+authentication against the Dropbox server. It will prompt for a token
+the first time it is executed, and store the token for future use.
+See 
+.SS \fIdbcmd(1)\fR 
+for more details.
+
+
+.SH SEE ALSO 
+
+.SS \fIdbcmd(1)\fR 
+
+
+.\" end of file

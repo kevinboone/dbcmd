@@ -1,0 +1,125 @@
+.\" Copyright (C) 2017 Kevin Boone 
+.\" Permission is granted to any individual or institution to use, copy, or
+.\" redistribute this software so long as all of the original files are
+.\" included, that it is not sold for profit, and that this copyright notice
+.\" is retained.
+.\"
+.TH dbcmd 1 "May 2017"
+.SH NAME
+Manage files on Dropbox
+.SH SYNOPSIS
+.B dbcmd 
+command\ [arguments]
+.PP
+
+.SH DESCRIPTION
+\fIdbcmd\fR is a very simple command-line utility for Linux,
+for uploading files to, and downloading them from, the Dropbox server.
+It can list files on the server and retrieve their meta-data. It is not
+intended as a substitute for the proprietary Dropbox client; rather
+it is a way to get access to Dropbox on systems that can't run this
+client. It is written in C, to have as few dependencies as possible. 
+ 
+
+.SH EXAMPLES
+
+.BI dbcmd\ -r\ get\ /docs/accounts/*.doc\ accounts/ 
+
+Download files the match pattern \fI*.doc\fR from \fI/docs/accounts\fR on the 
+Dropbox server, and any of its subfolders, 
+and copy them to the local directory \fIaccounts\fR, maintaining
+the same structure.
+
+.BI dbcmd\ -r\ put\ accounts/*.doc\ /docs/accounts/ 
+
+Upload files that match pattern \fI*.doc\fR from directory \fIaccounts/\fR 
+on the 
+local filesystem, maintaining
+the same structure in the remote folder \fI/docs/accounts/\fR.
+
+.SH "HELP"
+
+Each \fIdbcmd\fR command has its own manual page, which can be viewed
+from within the program by running
+
+.BI dbcmd\ help\ {command} 
+
+To see a list of commands:
+
+.BI dbcmd\ commands
+
+
+.SH "OPTIONS"
+
+These options apply to all commands, although the interpretation might
+differ between commands. For more information, see the manual pages
+for the individual commands.
+
+.TP
+.BI -a,\-\-auth
+Force a re-authentication against the Dropbox server, and get a new
+authentication token. The token is stored in 
+\fI$HOME/.dbcmdr_token\rR.
+.LP
+.TP
+.BI \-\-loglevel
+Set the logging verbosity from 0 (errors only) to 3 (debug tracing). The 
+default is 2.
+.LP
+.TP
+.BI -r,\-\-recursive
+Download, upload, or list files recursively
+.LP
+
+.SH NOTES
+
+.SS Folder naming 
+
+Names that refer to Dropbox folders \fImust\fR end in a forward
+slash (/) in this utility. This is true even if the folder exists. Failing to append the
+forward slash will result in trying to fetch a single file, rather than
+the contents of a folder. 
+
+Unlike \fIrsync(1)\fR, this utility will accept file wildcard characters in
+a folder expansion (as shown in the example above). Only files matching
+the pattern will be copied.
+
+.SS File list limit
+
+\fIdbcmd\fR imposes no limit -- other than time and memory -- 
+on the number of fiiles that can be uploaded
+in a single operation. The Dropbox API may have such a limit, but it isn't
+documented. However, this utility is not designed to handle huge synchronization
+operations. When handling large file sets, each file has to have a hash computed,
+and the complete list has to be passed over the wire. This is the case even
+if only a few files need actually to be copied. 
+
+.SS Timestamps
+
+The timestamp set on the file will be the time it is written to the local
+filesystem. No attempt is made to synchronize timestamps, because the
+Dropbox sync process uses hashes, not timestamps, to determine whether
+a file is up to date.
+
+.SS Authentication
+
+This utility, like all that use the Dropbox API, uses token-based
+authentication against the Dropbox server. It will prompt for a token
+the first time it is executed, and store the token for future use.
+The prompt will contain a link to the Dropbox website, where a token can
+be obtained if the user chooses to authorize the application.
+The lifetime of the token is not documented by Dropbox, but seems to
+be more-or-less indefinite, or until revoked. The authentication
+token is stored in a file, and is not encrypted. The token should not be
+distributed, as it might allow a person with the necessary expertise to
+impersonate the owner on the Dropbox server. 
+
+
+.SH SEE ALSO 
+
+.SS \fIdbcmd-get(1)\fR \fIdbcmd-put(1)\fR \fIdbcmd-list(1)\fR \fIdbcmd-info(1)\fR 
+
+
+
+
+.\" end of file

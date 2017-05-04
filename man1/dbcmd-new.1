@@ -1,0 +1,52 @@
+.\" Copyright (C) 2017 Kevin Boone 
+.\" Permission is granted to any individual or institution to use, copy, or
+.\" redistribute this software so long as all of the original files are
+.\" included, that it is not sold for profit, and that this copyright notice
+.\" is retained.
+.\"
+.TH dbcmd-new 1 "May 2017"
+.SH NAME
+Create a new folder on the Dropbox server
+.SH SYNOPSIS
+.B dbcmd 
+new\ [options]\ {remote_path} 
+.PP
+
+.SH DESCRIPTION
+\fIdbcmd new\fR creates a new folder on the Dropbox server.
+
+.SH EXAMPLE
+
+.BI dbcmd\ new\ /docs/accounts/march
+
+.SH "OPTIONS"
+.TP
+.BI -a,\-\-auth
+Force a re-authentication against the Dropbox server, and get a new
+authentication token. The token is stored in 
+\fI$HOME/.dbcmdr_token\rR.
+.LP
+
+.SH NOTES
+
+.SS Directory naming 
+
+The remote path must begin with '/'. As it can only be a directory, it does not
+matter whether it ends with a '/' or not.
+
+.SS Authentication
+
+This utility, like all that use the Dropbox API, uses token-based
+authentication against the Dropbox server. It will prompt for a token
+the first time it is executed, and store the token for future use.
+See 
+.SS \fIdbcmd(1)\fR 
+for more details.
+
+
+.SH SEE ALSO 
+
+.SS \fIdbcmd(1)\fR 
+
+
+.\" end of file

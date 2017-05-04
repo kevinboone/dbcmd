@@ -1,0 +1,50 @@
+.\" Copyright (C) 2017 Kevin Boone 
+.\" Permission is granted to any individual or institution to use, copy, or
+.\" redistribute this software so long as all of the original files are
+.\" included, that it is not sold for profit, and that this copyright notice
+.\" is retained.
+.\"
+.TH dbcmd-has 1 "March 2017"
+.SH NAME
+Calulate a Dropbox hash for a local file
+.SH SYNOPSIS
+.B dbcmd 
+hash\ [options]\ {local_file} 
+.PP
+
+.SH DESCRIPTION
+\fIdbcmd hash\fR applies the Dropbox SHA-256 hash to a local file. This
+allows the file to be compared for identicality for a file on the server,
+whose hash value has been displayed by \fIdbcmd info\fR. 
+
+.SH EXAMPLE
+
+.BI dbcmd\ hash\  docs/accounts/march2001.doc
+
+
+.SH "OPTIONS"
+.TP
+.BI -a,\-\-auth
+Force a re-authentication against the Dropbox server, and get a new
+authentication token. The token is stored in 
+\fI$HOME/.dbcmdr_token\rR.
+.LP
+
+.SH NOTES
+
+.SS Authentication
+
+This utility, like all that use the Dropbox API, uses token-based
+authentication against the Dropbox server. It will prompt for a token
+the first time it is executed, and store the token for future use.
+See 
+.SS \fIdbcmd(1)\fR 
+for more details.
+
+
+.SH SEE ALSO 
+
+.SS \fIdbcmd(1)\fR 
+
+
+.\" end of file
