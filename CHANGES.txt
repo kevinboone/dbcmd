@@ -5,4 +5,11 @@ First working version
 Complete re-implementation, with the following improvements:
 * libcurl is now linked, rather than invoking the curl utility via the
   operating system shell. This gives much better reporting of errors
-
+* The use of trailing slashes on directory/folder names now has the same
+  semantics as in rsync. There is no longer a requirement to signal that
+  a path should be treated as a folder by appending a /. However, sometimes
+  it is still useful to do so
+* delete command now supports wildcard searches
+* get and put now support multiple source arguments on the command line,
+  each of which may expand to mutliple files and directories if
+  wildcards are used

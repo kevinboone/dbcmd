@@ -37,6 +37,7 @@ typedef struct _Counters
   int skip_not_file_or_dir;
   int skip_not_recursive;
   int skip_unchanged;
+  int skip_too_big;
   int directories_could_not_be_expanded;
   } Counters;
 
@@ -165,17 +166,25 @@ static void put_one_item (const char *token, const CmdContext *context,
     if (S_ISREG (sb.st_mode))
       {
       // FILE 
-      char *fullremote;
+      if (sb.st_size < 150000000)
+        {
+	char *fullremote;
 
-      if (remote_is_dir)
-        asprintf (&fullremote, "%s/%s", remote, relative);
+	if (remote_is_dir)
+	  asprintf (&fullremote, "%s/%s", remote, relative);
+	else
+	  asprintf (&fullremote, "%s", remote);
+
+	cmd_put_consider_and_upload (token, context, full_local, fullremote,
+	  counters);
+
+	free (fullremote);
+        }
       else
-        asprintf (&fullremote, "%s", remote);
-
-      cmd_put_consider_and_upload (token, context, full_local, fullremote,
-        counters);
-
-      free (fullremote);
+        {
+        log_warning ("File too large to upload using " NAME ": %s", relative);
+        counters->skip_too_big++;
+        }
       }
     else if (S_ISDIR (sb.st_mode))
       {
@@ -358,11 +367,13 @@ int cmd_put (const CmdContext *context, int argc, char **argv)
       printf ("Files considered: %d\n", counters->total_items);
       printf ("Uploaded: %d\n", counters->uploaded); 
       int total_skips = counters->skip_not_file_or_dir +  
-            counters->skip_not_recursive + counters->skip_unchanged;
+            counters->skip_not_recursive + counters->skip_unchanged 
+            +counters->skip_too_big;
       if (total_skips > 0)
         {
         printf ("Skipped: %d\n", total_skips); 
         printf ("  Unchanged: %d\n", counters->skip_unchanged);
+        printf ("  Too large: %d\n", counters->skip_too_big);
         printf ("  Not regular file/directory: %d\n", 
            counters->skip_not_file_or_dir);
         printf ("  Not expanded without recursive mode: %d\n", 
