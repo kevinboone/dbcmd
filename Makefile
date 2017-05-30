@@ -1,7 +1,7 @@
 NAME    := dbcmd
 VERSION := 0.0.2
 CC      :=  gcc 
-LIBS    := -lm -lcurl
+LIBS    := -lm -lcurl ${EXTRA_LIBS} 
 TARGET	:= $(NAME) 
 SOURCES := $(shell find src/ -type f -name *.c)
 OBJECTS := $(patsubst src/%,build/%,$(SOURCES:.c=.o))
@@ -10,8 +10,8 @@ DESTDIR := /usr
 MANDIR  := $(DESTDIR)/share/man
 BINDIR  := $(DESTDIR)/bin
 SHARE   := /usr/share/$(TARGET)
-CFLAGS  := -fpie -fpic -Wall -DNAME=\"$(NAME)\" -DVERSION=\"$(VERSION)\" -g -I include
-LDFLAGS := -pie
+CFLAGS  := -fpie -fpic -Wall -DNAME=\"$(NAME)\" -DVERSION=\"$(VERSION)\" -g -I include ${EXTRA_CFLAGS}
+LDFLAGS := -pie -s ${EXTRA_LDFLAGS}
 
 all: $(TARGET)
 
