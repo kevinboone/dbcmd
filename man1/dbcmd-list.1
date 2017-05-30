@@ -25,12 +25,10 @@ List all files in the folder \fI/docs/accounts\fR and its
 subfolders on the server.
 
 .SH "OPTIONS"
-.TP
-.BI -a,\-\-auth
-Force a re-authentication against the Dropbox server, and get a new
-authentication token. The token is stored in 
-\fI$HOME/.dbcmdr_token\rR.
-.LP
+
+See main manual page for general options. The following are
+specific to this command.
+
 .TP
 .BI -l,\-\-long
 Display in long format, one file to a line
@@ -65,9 +63,9 @@ for more details.
 
 .SS Screen width 
 
-Other than in "long" mode, output is formatted in columns to fill the screen. The
-utility attempts to guess the screen width using system calls. If this is inaccurate,
-use the \fI--width\fR switch to set the width.
+Other than in "long" mode, output is formatted in columns to fill the screen.
+The utility attempts to guess the screen width using system calls. If this is
+inaccurate, use the \fI--width\fR switch to set the width.
 
 .SH SEE ALSO 
 

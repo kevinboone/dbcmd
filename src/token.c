@@ -13,7 +13,6 @@ GPL v3.0
 #include <unistd.h> 
 #include "auth.h"
 #include "token.h"
-#include "curl.h"
 #include "dropbox.h"
 
 #define FILENAME ".dbcmd_token"
@@ -81,6 +80,7 @@ char *token_read_stored (void)
   if (f)
     {
     char s[300];
+    memset (s, 0, sizeof (s));
     fscanf (f, "%s", s);
     fclose (f);
     ret = strdup (s);

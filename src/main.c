@@ -1,27 +1,26 @@
-/*---------------------------------------------------------------------------
+/*==========================================================================
 dbcmd
 main.c
-GPL v3.0
----------------------------------------------------------------------------*/
+Copyright (c)2017 Kevin Boone, GPLv3.0
+*==========================================================================*/
+
 #define _GNU_SOURCE
 #include <stdio.h>
+#include <curl/curl.h>
+#include <malloc.h>
+#include <memory.h>
 #include <stdlib.h>
 #include <getopt.h>
-#include <string.h>
-#include <fcntl.h>
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/ioctl.h>
 #include <termios.h>
-#include "cJSON.h"
-#include "curl.h"
-#include "dropbox.h"
 #include "token.h"
-#include "commands.h"
+#include "dropbox.h"
+#include "dropbox_stat.h"
 #include "log.h"
-#include "sha256.h"
-
+#include "commands.h"
 
 /*==========================================================================
 Command table
@@ -38,33 +37,42 @@ typedef struct _CmdTableEntry
   } CmdTableEntry;
 
 
-int cmd_commands (const CmdContext *context, int argc, char **argv); // FWD
-int cmd_help (const CmdContext *context, int argc, char **argv); // FWD
-CmdTableEntry *find_command_fn (const char *name); //FWD
+/*==========================================================================
+Forward
+*==========================================================================*/
+int cmd_commands (const CmdContext *context, int argc, char **argv); 
+int cmd_help (const CmdContext *context, int argc, char **argv); 
+CmdTableEntry *find_command_fn (const char *name); 
 
 
 /*==========================================================================
 cmd table
 *==========================================================================*/
-
 CmdTableEntry cmd_table[] =
   {
   {"commands", cmd_commands, "", "list commands", NULL},
-  {"delete", cmd_delete, "{remote_path}", "delete file or folder", NULL},
-  {"get", cmd_get, "{remote_path} [local_path]", "download file from server", NULL},
-  {"hash",  cmd_hash, "{local_file}", "shows the Dropbox hash of a local file", NULL},
-  {"help",  cmd_help, "[command]", "show information about a command", NULL},
-  {"info",  cmd_info, "{remote_path}", "show file/path info", NULL},
+  {"delete",  cmd_delete, "{remote_path_spec}", "delete files on server", 
+      NULL},
+  {"get",  cmd_get, "{remote_paths...} {local_path}", 
+      "download files from server", NULL},
+  {"help",  cmd_help, "[command]", "get help [on command]", NULL},
+  {"hash",  cmd_hash, "{local_paths...}", 
+     "show Dropbox hash for local files", NULL}, 
+  {"info",  cmd_info, "{remote_path}", "get information about remote path", 
+     NULL},
   {"list",  cmd_list, "[remote_path]", "list files on the server", NULL},
-  {"move",  cmd_move, "{old_path} {new_path}", "move file or folder on the server", NULL},
-  {"new",  cmd_new, "{new_path}", "create a new folder on the server", NULL},
-  {"put",  cmd_put, "{local_path} {remote_path}", "upload file to server", NULL},
+  {"move",  cmd_move, "{old_path} {new_path}", 
+     "move or rename items on the server", NULL},
+  {"newfolder",  cmd_newfolder, "{remote_paths...}", 
+     "create new folder(s) on the server", NULL},
+  {"put",  cmd_put, "{local_paths...} {remote_path}", "upload files to server", 
+     NULL},
   {NULL, NULL}
   };
 
 
 /*==========================================================================
-show_usage
+show_my_usage
 *==========================================================================*/
 void show_my_usage (const char *argv0)
   {
@@ -77,6 +85,7 @@ void show_my_usage (const char *argv0)
   printf ("  -a, --auth           renew authentication with Dropbox\n");
   printf ("  -y, --yes            renew authentication with Dropbox\n");
   printf ("  -l, --long           display in long format\n");
+  printf ("  -L, --dry-run        only display what would be done\n");
   printf ("      --width=N        set display width, if it cannot be guessed\n");
   printf ("Other options are available to specific commands:\n");
   printf ("Run '%s help [command]' for information about a command\n", argv0);
@@ -165,20 +174,25 @@ CmdTableEntry *find_command_fn (const char *name)
 
 
 
-/*---------------------------------------------------------------------------
-main
----------------------------------------------------------------------------*/
+/*==========================================================================
+main.c
+*==========================================================================*/
 int main (int argc, char **argv)
   {
-  static BOOL show_version = FALSE;
-  static BOOL show_usage = FALSE;
-  static BOOL reauth = FALSE;
-  static BOOL force = FALSE;
-  static BOOL recursive = FALSE;
-  static BOOL long_ = FALSE;
-  static BOOL yes = FALSE;
-  static int screen_width = 80; //TODO
-  static int loglevel = INFO;
+  IN
+
+  int ret = 0;
+
+  BOOL show_version = FALSE;
+  BOOL show_usage = FALSE;
+  BOOL reauth = FALSE;
+  BOOL force = FALSE; // Not used yet
+  BOOL dry_run = FALSE;
+  BOOL recursive = FALSE;
+  BOOL long_ = FALSE;
+  BOOL yes = FALSE;
+  int screen_width = 80; //TODO
+  int loglevel = INFO;
 
   // Sort the arguments so that switches come first
   // A consequence of this rather ugly process is that
@@ -209,22 +223,19 @@ int main (int argc, char **argv)
       }
     }
 
-  /*for (i = 0; i < argc; i++)
-    {
-    printf ("%d %s\n", i, sorted_argv[i]);
-    }*/
 
   static struct option long_options[] = 
    {
-     {"version", no_argument, &show_version, 'v'},
-     {"help", no_argument, &show_usage, '?'},
-     {"auth", no_argument, &reauth, 'a'},
-     {"recursive", no_argument, &recursive, 'r'},
-     {"force", no_argument, &force, 'f'},
-     {"long", no_argument, &long_, 'l'},
+     {"version", no_argument, NULL, 'v'},
+     {"help", no_argument, NULL, '?'},
+     {"auth", no_argument, NULL, 'a'},
+     {"recursive", no_argument, NULL, 'r'},
+     {"force", no_argument, NULL, 'f'},
+     {"long", no_argument, NULL, 'l'},
      {"loglevel", required_argument, NULL, 0},
      {"width", required_argument, NULL, 'w'},
-     {"yes", no_argument, &yes, 'y'},
+     {"yes", no_argument, NULL, 'y'},
+     {"dry-run", no_argument, NULL, 'L'},
      {0, 0, 0, 0}
    };
 
@@ -241,7 +252,7 @@ int main (int argc, char **argv)
   while (1)
    {
    int option_index = 0;
-   opt = getopt_long (argc, sorted_argv, "?valfrw:y",
+   opt = getopt_long (argc, sorted_argv, "?valfrw:yL",
      long_options, &option_index);
 
    if (opt == -1) break;
@@ -261,6 +272,8 @@ int main (int argc, char **argv)
           force = TRUE;
         else if (strcmp (long_options[option_index].name, "long") == 0)
           long_ = TRUE;
+        else if (strcmp (long_options[option_index].name, "dry-run") == 0)
+          dry_run = TRUE;
         else if (strcmp (long_options[option_index].name, "yes") == 0)
           yes = TRUE;
         else if (strcmp (long_options[option_index].name, "loglevel") == 0)
@@ -272,6 +285,7 @@ int main (int argc, char **argv)
         break;
 
      case 'l': long_ = TRUE; break;
+     case 'L': dry_run  = TRUE; break;
      case 'a': reauth = TRUE; break;
      case 'r': recursive = TRUE; break;
      case 'f': force = TRUE; break;
@@ -283,25 +297,29 @@ int main (int argc, char **argv)
      }
    }
 
+
   if (show_usage)
     {
     show_my_usage (argv[0]);
+    OUT
     exit (0);
     }
  
+
   if (show_version)
     {
     printf ("%s " VERSION "\n", argv[0]);
     printf ("Copyright (c)2017 Kevin Boone\n");
     printf ("Distributed under the terms of the GPL, v3.0\n");
+    OUT
     exit (0);
     }
 
 
   log_set_level (loglevel);
 
-  int ret = 0;
- 
+  curl_global_init (CURL_GLOBAL_ALL);
+
   if (optind == argc)
     {
     fprintf (stderr, "%s: No command specified\n", argv[0]);
@@ -331,6 +349,8 @@ int main (int argc, char **argv)
       context.long_ = long_;
       context.screen_width = screen_width;
       context.yes = yes;
+      context.dry_run = dry_run;
+      context.force = force;
       ret = cmd_entry->fn (&context, new_argc, new_argv); 
       }
     else
@@ -345,9 +365,12 @@ int main (int argc, char **argv)
     free (new_argv);
     }
 
+
+  curl_global_cleanup();
+
   free (sorted_argv);
+
+  OUT
   return ret;
   }
-
-
 

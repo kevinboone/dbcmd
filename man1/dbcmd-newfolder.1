@@ -4,28 +4,24 @@
 .\" included, that it is not sold for profit, and that this copyright notice
 .\" is retained.
 .\"
-.TH dbcmd-new 1 "May 2017"
+.TH dbcmd-newfolder 1 "May 2017"
 .SH NAME
 Create a new folder on the Dropbox server
 .SH SYNOPSIS
 .B dbcmd 
-new\ [options]\ {remote_path} 
+newfolder\ [options]\ {remote_paths...} 
 .PP
 
 .SH DESCRIPTION
-\fIdbcmd new\fR creates a new folder on the Dropbox server.
+\fIdbcmd newfolder\fR creates one or more new folders on the Dropbox server.
 
 .SH EXAMPLE
 
-.BI dbcmd\ new\ /docs/accounts/march
+.BI dbcmd\ newfolder\ /docs/accounts/march
 
 .SH "OPTIONS"
-.TP
-.BI -a,\-\-auth
-Force a re-authentication against the Dropbox server, and get a new
-authentication token. The token is stored in 
-\fI$HOME/.dbcmdr_token\rR.
-.LP
+
+See main manual page.
 
 .SH NOTES
 

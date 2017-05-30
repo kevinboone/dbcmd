@@ -1,6 +1,6 @@
 /*---------------------------------------------------------------------------
 dbcmd
-cmd.put.c
+cmd_put.c
 GPL v3.0
 ---------------------------------------------------------------------------*/
 #define _GNU_SOURCE
@@ -13,215 +13,393 @@ GPL v3.0
 #include <time.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <dirent.h>
+#include <stdlib.h>
 #include "cJSON.h"
-#include "curl.h"
 #include "dropbox.h"
 #include "token.h"
 #include "commands.h"
 #include "log.h"
-#include "utils.h"
+#include "errmsg.h"
+
 
 /*==========================================================================
-cmd_get
+private struct
 *==========================================================================*/
-int cmd_put (const CmdContext *context, int argc, char **argv)
+typedef struct _Counters
   {
-  int ret = 0;
-  char *remote_pathspec = NULL;
-  char *local_pathspec = NULL;
-  BOOL remote_is_dir = FALSE;
+  int total_items;
+  int stat_failed;
+  int get_info_failed;
+  int read_local_failed;
+  int upload_failed;
+  int uploaded;
+  int skip_not_file_or_dir;
+  int skip_not_recursive;
+  int skip_unchanged;
+  int directories_could_not_be_expanded;
+  } Counters;
 
-  log_debug ("Starting put command");
 
-  //BOOL force = context->force;
-  BOOL recursive = context->recursive;
+/*==========================================================================
+cmd_put_consider_and_upload
+*==========================================================================*/
+static void cmd_put_consider_and_upload (const char *token, 
+    const CmdContext *context, 
+    const char *source, const char *target, 
+    Counters *counters)
+  {
+  BOOL dry_run = context->dry_run;
 
-  if (argc != 3)
+  counters->total_items++;
+
+  log_debug ("Considering uploading %s to %s", source, target);
+
+  BOOL doit = FALSE;
+
+  DBStat *stat = dropbox_stat_create();
+  char *error = NULL;
+  dropbox_get_file_info (token, target, stat, &error);
+  if (error)
     {
-    log_error ("Usage: %s {local_path} {remote_path}", argv[0]); 
-    return EINVAL;
-    }
-
-  local_pathspec = argv[1];
-  remote_pathspec = argv[2];
-  
-  if (strlen (remote_pathspec) == 0) 
-    {
-    log_error ("%s: zero-length remote path argument: use / for root folder", argv[0]); 
-    return EINVAL;
-    }
-
-  if (remote_pathspec[0] != '/') 
-    {
-    log_error ("%s: remote path must begin with /", argv[0]); 
-    return EINVAL;
-    }
-
-  if (remote_pathspec[strlen(remote_pathspec) - 1] == '/')
-    {
-    remote_is_dir = TRUE;
-    }
-
-  if (utils_contains_wildcards (local_pathspec) || 
-       local_pathspec[strlen (local_pathspec) - 1] == '/')
-    {
-    if (!remote_is_dir)
-      {
-      log_error 
-        ("%s: if wildcards are specified, or the source is a directory, the target argument must be a directory\n",
-        argv[0]);
-      return EINVAL;
-      }
-    }
-
-  char *working_local_pathspec;
-  if (local_pathspec[strlen(local_pathspec) - 1] == '/')
-    {
-    working_local_pathspec = malloc (strlen (local_pathspec) + 5);
-    strcpy (working_local_pathspec, local_pathspec);
-    strcat (working_local_pathspec, "*");
+    log_error (error);
+    counters->get_info_failed++;
+    free (error);
     }
   else
-    working_local_pathspec = strdup (local_pathspec);
-
-  char *working_local_pathspec_copy1 = strdup (working_local_pathspec);
-
-  char *pattern = basename  (working_local_pathspec_copy1);
-  char *local_dir = dirname (working_local_pathspec);
-
-  char *working_local_dir = malloc (strlen (local_dir) + 5);
-  strcpy (working_local_dir, local_dir);
-  if (local_dir[strlen(local_dir) - 1] != '/')
-    strcat (working_local_dir, "/");
-
-  List *local_paths = list_create (free);
-  
-  char *error = NULL;
-  utils_expand_path (working_local_dir, pattern, local_paths, recursive);
-  
-  int i, l = list_length (local_paths);
-  int matching = l;
-  log_debug ("Found %d file(s) in local directory", l);
-
-  if (matching > 0)
     {
-    char *token = token_init (&error);
-    if (token)
-      { 
-      int skip_error = 0;
-      int skip_unchanged = 0;
-      int skip_too_large = 0;
-      int copy_fail = 0;
-      int copy_success = 0;
-      for (i = 0; i < l; i++)
-	{
-	const char *local_full_path = list_get (local_paths, i);
-	const char *local_rel_file = local_full_path + strlen (working_local_dir);
-	const char *source_file = local_full_path;
-	char *target_file;
-	if (remote_pathspec[strlen(remote_pathspec) - 1] == '/')
-	  {
-	  target_file = malloc (strlen (remote_pathspec) 
-	     + strlen (local_rel_file) + 5); 
-	  strcpy (target_file, remote_pathspec);
-	  strcat (target_file, local_rel_file);
-	  }
-	else
-	  {
-	  // We should have checked earlier that the source argument is
-	  //  a single file, before assuming the target has the same name
-	  target_file = strdup (remote_pathspec);
-	  }
-	log_info ("Local file: %s, remote file: %s", source_file, target_file); 
-
-        DBCompRes res;
-        dropbox_compare_files (token, source_file, target_file, &res, &error);
-        if (error)
+    if (dropbox_stat_get_type (stat) == DBSTAT_FILE)
+      {
+      const char *remote_hash = dropbox_stat_get_hash (stat);
+      char local_hash [DBHASH_LENGTH];
+      dropbox_hash (source, local_hash, &error); 
+      if (error)
+        {
+        log_error (error);
+        free (error);
+        counters->read_local_failed++;
+        }
+      else
+        {
+        if (strcmp (remote_hash, local_hash) != 0)
           {
-          log_error ("Can't compare file details: %s", error);
-          free (error); 
-          skip_error++; 
+          log_debug ("Will upload, as hashes are different");
+          log_info ("Uploading updated file '%s' to server", source);
+          doit = TRUE;
           }
         else
           {
-          // We managed to get local and remote file details --
-          //  now check whether they mean we need to copy
-          BOOL copy = FALSE;
-     
-          if (res.remote_file_exists)
-            {
-            if (strncmp (res.local_hash, res.remote_hash, DBHASH_LENGTH) != 0)
-              {
-              log_info ("File contents differ -- will upload");
-              copy = TRUE;
-              }
-            else
-              {
-              log_info ("Files have the same contents -- will not upload");
-              skip_unchanged++;
-              }
-            }
-          else
-            {
-            log_info ("Will upload, as remote file does not exist");
-            copy = TRUE;
-            }
-
-          if (copy)
-            {
-            struct stat sb;
-            stat (source_file, &sb);
-            if (sb.st_size < 150000000)
-              {
-	      log_info ("Uploading %s", source_file);
-	      dropbox_upload_file (token, source_file, target_file, &error); 
-	      if (error)
-		{
-		log_error ("Can't upload file: %s", error);
-		free (error);
-		copy_fail++;
-		}
-	      else
-		copy_success++;
-              }
-            else
-              {
-              log_error ("Can't upload file '%s' because it is too large", source_file);
-              skip_too_large ++;
-              }
-            }
+          log_info 
+             ("Skipping file '%s' that is identical on client and server",
+              source);
+          counters->skip_unchanged++;
           }
+        }
+      }
+    else 
+      {
+      log_info ("Uploading new file '%s' to server", source);
+      log_debug ("Will upload '%s', as it does not exist on the server", 
+         source);
+      doit = TRUE;
+      }
+    dropbox_stat_destroy (stat); 
+    }
 
-	free (target_file);
-	}
-      free (token);
-
-      log_info ("%d file(s) matched pattern '%s'", matching, pattern);
-      log_info ("%d file(s) skipped because of error", skip_error);
-      log_info ("%d file(s) skipped because they are too large", skip_too_large);
-      log_info ("%d file(s) skipped because contents are identical", skip_unchanged);
-      log_info ("%d file(s) could not be copied", copy_fail);
-      log_info ("%d file(s) copied", copy_success); 
+  if (doit)
+    {
+    if (dry_run)
+      {
+      printf ("Source: %s\n", source);
+      printf ("Destination: %s\n\n", target);
       }
     else
       {
-      log_error ("%s: Can't initialize access token: %s", 
-	  argv[0], error);
-      free (error);
-      ret = EBADRQC;
+      dropbox_upload (token, source, target, &error); 
+      if (error)
+        {
+        log_error (error);
+        free (error);
+        counters->upload_failed++;
+        }
+      else
+        {
+        counters->uploaded++;
+        }
+      }
+    }
+  }
+
+
+/*==========================================================================
+put_one_item
+*==========================================================================*/
+static void put_one_item (const char *token, const CmdContext *context, 
+    const char *_base, const char *_relative, const char *remote, 
+    Counters *counters, BOOL remote_is_dir)
+  {
+  IN
+
+  BOOL recursive = context->recursive;
+
+  char *base = strdup (_base);
+  char *relative = strdup (_relative);
+  if (strcmp (relative, ".") == 0)
+    relative[0] = 0;
+
+  char *full_local;
+
+  char *exp_base;
+  if (base[strlen(base) - 1] == '/')
+    exp_base = strdup (base);
+  else
+    asprintf (&exp_base, "%s/", base);
+
+  asprintf (&full_local, "%s%s", exp_base, relative);
+
+  free (exp_base);
+
+  struct stat sb;
+  if (stat (full_local, &sb) == 0)
+    {
+    if (S_ISREG (sb.st_mode))
+      {
+      // FILE 
+      char *fullremote;
+
+      if (remote_is_dir)
+        asprintf (&fullremote, "%s/%s", remote, relative);
+      else
+        asprintf (&fullremote, "%s", remote);
+
+      cmd_put_consider_and_upload (token, context, full_local, fullremote,
+        counters);
+
+      free (fullremote);
+      }
+    else if (S_ISDIR (sb.st_mode))
+      {
+      // DIRECTORY
+      log_debug ("%s is a directory", full_local);
+      if (recursive)
+        {
+        DIR *d = opendir (full_local);
+        if (d)
+          {
+          struct dirent *de;
+          while ((de = readdir (d)) != NULL)
+            {
+            const char *name = de->d_name;
+            if (strcmp (name, ".") == 0) continue;
+            if (strcmp (name, "..") == 0) continue;
+            // TODO hidden files
+
+            char *newrel;
+
+            if (strlen (relative) == 0)
+              {
+              asprintf (&newrel, "%s", name);
+              }
+            else
+              {
+              if (relative[strlen(relative) - 1] == '/')
+                relative[strlen(relative) - 1] = 0;
+              asprintf (&newrel, "%s/%s", relative, name);
+              }
+
+            put_one_item (token, context, base, newrel, remote, counters, 
+              remote_is_dir);
+
+            free (newrel);
+            }
+          closedir (d);
+          }
+        else
+          {
+	  log_warning 
+	    ("Directory %s cannot be expanded: %s", 
+	      full_local, strerror (errno));
+	  counters->directories_could_not_be_expanded++; 
+          } 
+        } 
+      else
+        {
+	log_warning 
+	  ("skipping directory %s because recursive mode was not specified ", 
+	    full_local);
+	counters->skip_not_recursive++; 
+	}
+      }
+    else
+      {
+      // NOT REGULAR 
+      log_warning ("%s in not a regular file or directory", full_local);
+      counters->skip_not_file_or_dir++; 
       }
     }
   else
     {
-    log_error ("No local files to copy");
+    log_warning ("can't get attributes of %s: %s", full_local, 
+      strerror (errno));
+    counters->stat_failed++; 
     }
 
-  list_destroy (local_paths);
+  free (full_local);
+  free (base);
+  free (relative);
+  OUT
+  }
 
-  free (working_local_dir);
-  free (working_local_pathspec_copy1);
-  free (working_local_pathspec);
 
+/*==========================================================================
+cmd_put_one_local_spec
+*==========================================================================*/
+static void cmd_put_one_local_spec (const char *token, 
+    const CmdContext *context, 
+    const char *local, const char *remote, Counters *counters, 
+    BOOL remote_is_dir)
+  {
+  if (local[strlen(local) - 1] == '/')
+    {
+    put_one_item (token, context, local, ".", remote, counters, remote_is_dir);
+    }
+  else
+    {
+    char *abspath = realpath (local, NULL);
+    char *_local = strdup (abspath);
+    char *__local = strdup (abspath);
+    char *filename = basename (_local);
+    char *dir = dirname (__local);
+    put_one_item (token, context, dir, filename, remote, counters, 
+      remote_is_dir);
+    free (_local);
+    free (__local);
+    free (abspath);
+    }
+  }
+
+
+/*==========================================================================
+cmd_put
+*==========================================================================*/
+int cmd_put (const CmdContext *context, int argc, char **argv)
+  {
+  IN
+  int ret = 0;
+
+  log_debug ("Starting put command");
+
+  if (argc < 3)
+    {
+    log_error ("%s: %s: this command takes two or more arguments\n",
+      NAME, argv[0]);
+    OUT
+    return EINVAL;
+    }
+
+  char *dest_spec = strdup (argv [argc - 1]);
+  log_debug ("dest_spec is %s", dest_spec);
+
+  if (dest_spec[0] != '/')
+    {
+    log_error ("%s: %s: %s\n",
+      NAME, argv[0], ERROR_STARTSLASH);
+    free (dest_spec);
+    OUT
+    return EINVAL;
+    }
+
+  BOOL remote_is_dir = FALSE;
+
+  if (dest_spec[strlen(dest_spec) - 1] == '/')
+    {
+    remote_is_dir = TRUE;
+    dest_spec[strlen(dest_spec) - 1] = 0;
+    }
+
+  char *error = NULL;
+  char *token = token_init (&error);
+  if (token)
+    {
+    // If the user has already indicated that the remote path is a
+    //   directory, don't check it on the server
+    if (remote_is_dir == FALSE)
+      {
+      DBStat *stat = dropbox_stat_create();
+      dropbox_get_file_info (token, dest_spec, stat, &error);
+      if (dropbox_stat_get_type (stat) == DBSTAT_FOLDER)
+        remote_is_dir = TRUE;
+      else
+        remote_is_dir = FALSE;
+      dropbox_stat_destroy (stat);
+      }
+
+    // This is not sufficient -- we need to expand the file list, not
+    //  just count the number of arguments. If an argument contains 
+    //  multiple files, it will still need the target to be a folder
+    if (argc > 3 && !remote_is_dir)
+      {
+      log_error ("%s: %s: if multiple source files are specified, the target argument must refer to a pre-existing directory\n", NAME, argv[0]); 
+      }
+    else
+      {
+      // TODO process include/exclude 
+
+      Counters *counters = malloc (sizeof (Counters));
+      memset (counters, 0, sizeof (Counters));
+
+      int i;
+      for (i = 1; i < argc - 1; i++)
+	{
+	cmd_put_one_local_spec (token, context, argv[i], dest_spec, counters, 
+          remote_is_dir);
+	}
+ 
+      printf ("Files considered: %d\n", counters->total_items);
+      printf ("Uploaded: %d\n", counters->uploaded); 
+      int total_skips = counters->skip_not_file_or_dir +  
+            counters->skip_not_recursive + counters->skip_unchanged;
+      if (total_skips > 0)
+        {
+        printf ("Skipped: %d\n", total_skips); 
+        printf ("  Unchanged: %d\n", counters->skip_unchanged);
+        printf ("  Not regular file/directory: %d\n", 
+           counters->skip_not_file_or_dir);
+        printf ("  Not expanded without recursive mode: %d\n", 
+          counters->skip_not_recursive);
+        }
+      int total_errors = counters->stat_failed + counters->get_info_failed
+         + counters->read_local_failed + counters->upload_failed + 
+         counters->directories_could_not_be_expanded;
+      if (total_errors)
+        {
+        printf ("Errors: %d\n", total_errors); 
+        printf ("  Could not get local file metadata: %d\n", 
+         counters->stat_failed); 
+        printf ("  Could not expand local directory: %d\n", 
+         counters->directories_could_not_be_expanded); 
+        printf ("  Could not get remote file metadata: %d\n", 
+         counters->get_info_failed); 
+        printf ("  Could not read local file: %d\n", 
+         counters->read_local_failed); 
+        printf ("  Upload failed: %d\n", 
+         counters->upload_failed); 
+        }
+
+      free (counters);
+      }
+    free (token);
+    }
+  else
+    {
+    log_error ("%s: Can't initialize access token: %s", 
+      argv[0], error);
+    free (error);
+    ret = EBADRQC;
+    }
+
+  free (dest_spec);
+  OUT
   return ret;
   }
 

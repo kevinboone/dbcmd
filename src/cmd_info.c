@@ -11,11 +11,11 @@ GPL v3.0
 #include <errno.h>
 #include <time.h>
 #include "cJSON.h"
-#include "curl.h"
 #include "dropbox.h"
 #include "token.h"
 #include "commands.h"
 #include "log.h"
+#include "errmsg.h"
 
 /*==========================================================================
 cmd_info
@@ -41,9 +41,9 @@ int cmd_info (const CmdContext *context, int argc, char **argv)
       char *token = token_init (&error);
       if (token)
 	{
-        DBStat stat;
+        DBStat *stat = dropbox_stat_create();
         dropbox_get_file_info (token, remote_file, 
-          &stat, &error);
+          stat, &error);
 
 	if (error)
 	  {
@@ -53,11 +53,12 @@ int cmd_info (const CmdContext *context, int argc, char **argv)
 	  } 
         else
           {
-          if (stat.type == DBSTAT_FOLDER)
+          if (dropbox_stat_get_type (stat) == DBSTAT_FOLDER)
             {
             printf ("Type: folder\n");
-            List *list = list_create (dbstat_free);
-            dropbox_get_file_list (token, remote_file, recursive, TRUE, list, &error);
+            List *list = dropbox_stat_create_list(); 
+            dropbox_list_files (token, remote_file, list, 
+              TRUE, recursive, &error);
             int i, l = list_length (list);
             int dirs = 0;
             int files = 0;
@@ -80,16 +81,22 @@ int cmd_info (const CmdContext *context, int argc, char **argv)
             printf ("Subfolders : %d\n", dirs);
             printf ("Total size: %ld\n", size);
             }            
-          else  if (stat.type == DBSTAT_FILE)
+          else  if (dropbox_stat_get_type (stat) == DBSTAT_FILE)
             {
             printf ("Type: file\n");
-            printf ("Client modified: %s", ctime (&(stat.client_modified)));
-            printf ("Server modified: %s", ctime (&(stat.server_modified)));
-            printf ("Hash: %s\n", stat.hash);
+            printf ("Name: %s\n", dropbox_stat_get_name (stat));
+            printf ("Path: %s\n", dropbox_stat_get_path (stat));
+            time_t client_modified = dropbox_stat_get_client_modified (stat);
+            time_t server_modified = dropbox_stat_get_server_modified (stat);
+            printf ("Client modified: %s", ctime (&(client_modified)));
+            printf ("Server modified: %s", ctime (&(server_modified)));
+            printf ("Length: %ld\n", dropbox_stat_get_length (stat));
+            printf ("Hash: %s\n", dropbox_stat_get_hash (stat));
             }
           else printf ("File not found\n");
           }
 
+        dropbox_stat_destroy (stat);
 	free (token);
 	}
       else
@@ -102,8 +109,8 @@ int cmd_info (const CmdContext *context, int argc, char **argv)
       }
     else
       {
-      log_error ("%s: path must start with '/'", 
-	  argv[0]);
+      log_error ("%s: %s: %s", 
+	  NAME, argv[0], ERROR_STARTSLASH);
       ret = EINVAL;
       }
     }

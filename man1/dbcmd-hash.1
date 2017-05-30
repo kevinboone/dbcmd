@@ -9,13 +9,14 @@
 Calulate a Dropbox hash for a local file
 .SH SYNOPSIS
 .B dbcmd 
-hash\ [options]\ {local_file} 
+hash\ [options]\ {local_files...} 
 .PP
 
 .SH DESCRIPTION
-\fIdbcmd hash\fR applies the Dropbox SHA-256 hash to a local file. This
-allows the file to be compared for identicality for a file on the server,
-whose hash value has been displayed by \fIdbcmd info\fR. 
+\fIdbcmd hash\fR applies the Dropbox SHA-256 hash to one or more local files. 
+This
+allows files to be compared for identicality for a file on the server,
+whose hash value have been displayed by \fIdbcmd info\fR. 
 
 .SH EXAMPLE
 
@@ -23,12 +24,8 @@ whose hash value has been displayed by \fIdbcmd info\fR.
 
 
 .SH "OPTIONS"
-.TP
-.BI -a,\-\-auth
-Force a re-authentication against the Dropbox server, and get a new
-authentication token. The token is stored in 
-\fI$HOME/.dbcmdr_token\rR.
-.LP
+
+See main manual page.
 
 .SH NOTES
 

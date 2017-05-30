@@ -1,436 +1,269 @@
-/*---------------------------------------------------------------------------
+/*==========================================================================
 dbcmd
 dropbox.c
-GPL v3.0
----------------------------------------------------------------------------*/
+Copyright (c)2017 Kevin Boone, GPLv3.0
+*==========================================================================*/
+
 #define _GNU_SOURCE
 #include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <unistd.h>
+#include <curl/curl.h>
+#include <malloc.h>
+#include <memory.h>
 #include <time.h>
+#include <stdlib.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <errno.h>
 #include <sys/types.h>
 #include <sys/stat.h>
-#include <fcntl.h>
+#include "token.h"
 #include "cJSON.h"
-#include "curl.h"
 #include "dropbox.h"
-#include "bool.h"
+#include "dropbox_stat.h"
+#include "list.h"
 #include "log.h"
+#include "auth.h"
 #include "sha256.h"
 
+#define EASY_INIT_FAIL "Cannot initialize curl"
+
+// Size of file chuck to do SHA256 on, when compariing hashes.
+// This is not arbitrary -- the DB algorithm depends on using a fixed
+// size hash
 #define HASH_BUFSZ (4 * 1024 * 1024)
 
-static char *make_parse_error_message (void);
-static const char *dropbox_reason (int code);
-static time_t parse_db_timestamp (const char *s);
 
 /*---------------------------------------------------------------------------
-dbstat_free
+Forward
 ---------------------------------------------------------------------------*/
-void dbstat_free (void *_self)
+void _dropbox_list_files (const char *token, const char *path, 
+    List *list, BOOL include_dirs, BOOL recursive, const char *cursor, 
+    char **error);
+static size_t dropbox_write_callback (void *contents, size_t size, 
+    size_t nmemb, void *userp);
+static size_t dropbox_store_callback (void *contents, size_t size, 
+    size_t nmemb, void *userp);
+static time_t dropbox_parse_timestamp (const char *s);
+
+
+/*---------------------------------------------------------------------------
+Private structs
+---------------------------------------------------------------------------*/
+struct DBWriteStruct 
   {
-  DBStat *self = _self;
-  if (self)
-    {
-    if (self->path)
-      free (self->path); 
-    if (self->name)
-      free (self->name); 
-    free (self);
-    }
+  char *memory;
+  size_t size;
+  };
+
+struct DBStoreStruct 
+  {
+  int f; // A file handle
+  };
+
+
+/*---------------------------------------------------------------------------
+dropbox_humanize_error
+---------------------------------------------------------------------------*/
+void dropbox_humanize_error (const char *db_error, char **error)
+  {
+  // There are probably plenty more messages that might be encountered...
+  if (strstr (db_error, "not_found"))
+    asprintf (error, "Path or file not found");
+  else if (strstr (db_error, "path/not_folder"))
+     asprintf (error, "Path supplied was not a folder");
+  else if (strstr (db_error, "conflict/file"))
+     asprintf (error, "Filename already exists");
+  else if (strstr (db_error, "conflict/folder"))
+     asprintf (error, "Folder already exists");
+  else if (strstr (db_error, "malformed_path"))
+     asprintf (error, "Server path incorrectly formed");
+  else
+    asprintf (error, "%s", db_error);
   }
 
-/*---------------------------------------------------------------------------
-Ugh. There seems to be no way of knowing when DB will return a JSON-format
-error, or a plain text error message.
----------------------------------------------------------------------------*/
-static char *decode_server_error (const char *text)
-  {
-  char *ret = NULL;
 
-  cJSON *root = cJSON_Parse (text); 
+/*---------------------------------------------------------------------------
+This should be called in situations where a curl perform call returns
+zero, but there might be an error message buried in the server
+response. 
+---------------------------------------------------------------------------*/
+void dropbox_check_response_for_error (const char *response, char **error)
+  {
+  log_debug ("dropbox_check_response_for_error \"%s\"", response);
+  cJSON *root = cJSON_Parse (response); 
   if (root)
     {
     cJSON *j  = cJSON_GetObjectItem (root, "error_summary");
     if (j)
       {
-      if (strstr (j->valuestring, "path/not_found"))
-        asprintf (&ret, "Path or file not found");
-      else if (strstr (j->valuestring, "path/not_folder"))
-        asprintf (&ret, "Path supplied was not a folder");
-      else
-        asprintf (&ret, "%s", j->valuestring);
+      dropbox_humanize_error (j->valuestring, error);
       }
     else
       {
-      asprintf (&ret, "%s", text);
+      // Do nowt -- non-error JSON response
       }
     cJSON_Delete (root);
     }
   else
     {
-    asprintf (&ret, "%s", text);
+    asprintf (error, "%s", response);
     }
 
-  return ret;
+  OUT
   }
 
 
 /*---------------------------------------------------------------------------
-dropbox_create_folder
+ TODO -- restructure this so callers just use 
+   dropbox_check_response_for_error
 ---------------------------------------------------------------------------*/
-BOOL dropbox_create_folder (const char *token, const char *new_path,
-    char **error)
+static char *dropbox_decode_server_error (const char *text)
   {
-  BOOL ret = FALSE;
-  char *text = curl_issue_create_folder (token, new_path, error); 
-  if (text)
-    {
-    cJSON *root = cJSON_Parse (text); 
-    if (root)
-      {
-      cJSON *j_name  = cJSON_GetObjectItem (root, "name");
-      if (j_name)
-	{
-        ret = TRUE;
-        // That's good enough to assume success
-	}
-      else
-        {
-	*error = decode_server_error (text);
-	}
-      cJSON_Delete (root);
-      }
-    else
-      {
-      *error = make_parse_error_message();
-      }
-
-    free (text);
-    }
-
+  IN
+  log_debug ("decode_server_error \"%s\"", text);
+  char *ret = NULL;
+  dropbox_check_response_for_error (text, &ret);
+  OUT
   return ret;
-  }
-
-
-/*---------------------------------------------------------------------------
-dropbox_compare_files
----------------------------------------------------------------------------*/
-BOOL dropbox_compare_files (const char *token, const char *local_file, 
-    const char *remote_file, DBCompRes *res,  char **error)
-  {
-  BOOL ret = TRUE;
-  log_debug ("Comparing file timestamps");
-
-  memset (res, 0, sizeof (DBCompRes));
-
-  struct stat sb;
-  if (stat (local_file, &sb) == 0)
-    {
-    log_debug ("Local file %s exists", local_file);
-    res->local_file_exists = TRUE;
-    res->local_time = sb.st_mtime;
-    dropbox_hash (local_file, res->local_hash, error);
-    }
-  else
-    log_debug ("Local file %s does not exist", local_file);
-
-  DBStat dbstat;
-  if (dropbox_get_file_info (token, remote_file, &dbstat, error))
-    {
-    if (dbstat.type == DBSTAT_FILE)
-      {
-      log_debug ("Remote file %s exists", remote_file);
-      res->remote_file_exists = TRUE;
-      res->remote_time = dbstat.server_modified; 
-      strncpy (res->remote_hash, dbstat.hash, DBHASH_LENGTH);
-      }
-    else if (dbstat.type == DBSTAT_FOLDER)
-      {
-      ret = FALSE;
-      *error = strdup ("Attempt to get file attributes for a folder");
-      }
-    else
-      {
-      log_debug ("Remote file %s does not exist", remote_file);
-      }
-    }
-  else
-    {
-    // Do nothing here -- propagate the error to the caller
-    ret = FALSE;
-    }
-  return ret;
-  }
-
-
-/*---------------------------------------------------------------------------
-dropbox_delete
-Delete file or directory. NOTE **recursive** (this behaviour is part of
-the DB API and cannot be changed)
----------------------------------------------------------------------------*/
-BOOL dropbox_delete (const char *token, const char *path, 
-    char **error)
-  {
-  BOOL ret = FALSE;
-  char *text = curl_issue_delete_path (token, path, error); 
-  if (text)
-    {
-    cJSON *root = cJSON_Parse (text); 
-    if (root)
-      {
-      cJSON *j_tag  = cJSON_GetObjectItem (root, ".tag");
-      if (j_tag)
-	{
-        ret = TRUE;
-        // That's good enough to assume success
-	}
-      else
-        {
-	*error = decode_server_error (text);
-	}
-      cJSON_Delete (root);
-      }
-    else
-      {
-      *error = make_parse_error_message();
-      }
-
-    free (text);
-    }
-
-  return ret;
-  }
-
-
-/*---------------------------------------------------------------------------
-dropbox_download_file
----------------------------------------------------------------------------*/
-BOOL dropbox_download_file (const char *token, const char *source, 
-    const char *target, char **error)
-  {
-  BOOL ret = FALSE;
-
-  int resp = 0;
-  curl_issue_download_file (token, source, target, &resp, error);
-  log_debug ("Curl response is %d", resp);
-
-  if (resp == 200)
-    {
-    // Do nothing -- it's OK
-    }
-  else
-    {
-    // TODO -- parse the returned file as a potential JSON response
-    asprintf (error, "Can't download %s: %s", source, dropbox_reason (resp));
-    unlink (target);
-    }
-
-  return ret; 
   }
 
 
 /*---------------------------------------------------------------------------
 dropbox_get_file_info
 ---------------------------------------------------------------------------*/
-BOOL dropbox_get_file_info (const char *token, const char *path, 
-    DBStat *stat, char **error)
+void dropbox_get_file_info (const char *token, const char *path, 
+          DBStat *stat, char **error)
   {
-  BOOL ret = FALSE;
-  memset (stat, 0, sizeof (DBStat));
+  IN
+  log_debug ("dropbox_get_file_info token=%s, path=%s",
+    token, path);
 
-  if (strcmp (path, "/"))
+  if (strcmp (path, "") == 0)
     {
-    // Dropbox does not support a metadata call on /, for some reason
-    // So we must provide our own
-    char *text = curl_issue_get_file_info (token, path, error);
-
-    if (text)
-      {
-      if (strstr (text, "path/not_found"))
-	{
-        stat->type = DBSTAT_NONE;	
-	}
-      else 
-	{
-	//printf ("text=%s\n", text);
-
-	cJSON *root = cJSON_Parse (text); 
-	if (root)
-	  {
-	  cJSON *j_tag  = cJSON_GetObjectItem (root, ".tag");
-	  if (j_tag)
-	    {
-	    if (strcmp (j_tag->valuestring, "folder") == 0)
-	      stat->type = DBSTAT_FOLDER;
-	    else 
-	      stat->type = DBSTAT_FILE;
-
-	    cJSON *j_server_modified  = cJSON_GetObjectItem 
-               (root, "server_modified");
-	    if (j_server_modified)
-	      {
-              stat->server_modified = 
-                 parse_db_timestamp (j_server_modified->valuestring); 
-              }
-
-	    cJSON *j_client_modified  = cJSON_GetObjectItem 
-               (root, "client_modified");
-	    if (j_client_modified)
-	      {
-              stat->client_modified = 
-                 parse_db_timestamp (j_client_modified->valuestring); 
-              }
-
-	    cJSON *j_hash  = cJSON_GetObjectItem 
-               (root, "content_hash");
-	    if (j_hash)
-	      {
-              memcpy (stat->hash, j_hash->valuestring, DBHASH_LENGTH);
-              }
-	    ret = TRUE;
-	    }
-	  else
-	    {
-	    *error = decode_server_error (text);
-	    }
-	  cJSON_Delete (root);
-	  }
-	else
-	  {
-	  *error = make_parse_error_message();
-	  }
-	}
-
-      free (text);
-      ret = TRUE;
-      }
-    else
-      {
-      // Do nothing, and hope error has been set
-      }
+    // Dropbox does not support file info on the top-level directory 
+    dropbox_stat_set_path (stat, "/");
+    dropbox_stat_set_name (stat, "/");
+    dropbox_stat_set_type (stat, DBSTAT_FOLDER);
     }
   else
     {
-    stat->type = DBSTAT_FOLDER;
-    ret = TRUE;
-    }
-
-  return ret; 
-  }
-
-
-/*---------------------------------------------------------------------------
-_dropbox_get_fole_list
----------------------------------------------------------------------------*/
-BOOL _dropbox_get_file_list (const char *token, const char *path, 
-    BOOL recursive, BOOL include_dirs, const char *cursor, 
-    List *list, char **error)
-  {
-  BOOL ret = FALSE;
-
-  if (strcmp (path, "/") == 0) path = "";
-  char *text = curl_issue_list_files (token, path, recursive, cursor, error);
-  if (text)
-    {
-    cJSON *root = cJSON_Parse (text); 
-    if (root)
+    CURL* curl = curl_easy_init();
+    if (curl)
       {
-      cJSON *entries = cJSON_GetObjectItem (root, "entries");
-      if (entries) 
+      struct DBWriteStruct response;
+      response.memory = malloc(1);  
+      response.size = 0;    
+   
+      struct curl_slist *headers = NULL;
+
+      curl_easy_setopt (curl, CURLOPT_POST, 1);
+
+      char *auth_header, *data;
+      asprintf (&auth_header, "Authorization: Bearer %s", token);
+      headers = curl_slist_append (headers, auth_header);
+      headers = curl_slist_append (headers, "Content-Type: application/json");
+
+      curl_easy_setopt (curl, CURLOPT_URL, 
+	  "https://api.dropboxapi.com/2/files/get_metadata");
+
+      asprintf (&data, "{\"path\":\"%s\"}", path); 
+
+      char curl_error [CURL_ERROR_SIZE];
+      curl_easy_setopt (curl, CURLOPT_ERRORBUFFER, curl_error);
+      curl_easy_setopt (curl, CURLOPT_WRITEFUNCTION, dropbox_write_callback);
+      curl_easy_setopt (curl, CURLOPT_WRITEDATA, &response);
+      curl_easy_setopt (curl, CURLOPT_POSTFIELDS, data);
+      curl_easy_setopt (curl, CURLOPT_HTTPHEADER, headers);
+
+      CURLcode curl_code = curl_easy_perform (curl);
+      if (curl_code == 0)
 	{
-	int i, n = cJSON_GetArraySize (entries);
-	for (i = 0; i < n; i++)
+	char *resp = response.memory;
+        if (strstr (resp, "path/not_found"))
 	  {
-	  cJSON *item = cJSON_GetArrayItem (entries, i);
-	  cJSON *j_tag = cJSON_GetObjectItem (item, ".tag");
-	  if (j_tag && strcmp (j_tag->valuestring, "file") == 0)
-            {
-            DBStat *stat = malloc (sizeof (DBStat));
-            memset (stat, 0, sizeof (DBStat));
-            stat->type = DBSTAT_FILE;
-	    cJSON *item = cJSON_GetArrayItem (entries, i);
-	    cJSON *j_path = cJSON_GetObjectItem (item, "path_display");
-	    if (j_path)
-	      stat->path  = strdup (j_path->valuestring); 
-	    cJSON *j_name = cJSON_GetObjectItem (item, "name");
-	    if (j_name)
-	      stat->name  = strdup (j_name->valuestring); 
-	    cJSON *j_size = cJSON_GetObjectItem (item, "size");
-	    if (j_size)
-	      stat->length = j_size->valueint;      
-	    cJSON *j_server_modified  = cJSON_GetObjectItem 
-               (item, "server_modified");
-	    if (j_server_modified)
-	      {
-              stat->server_modified = 
-                 parse_db_timestamp (j_server_modified->valuestring); 
-              }
-	    cJSON *j_client_modified  = cJSON_GetObjectItem 
-               (item, "client_modified");
-	    if (j_client_modified)
-	      {
-              stat->client_modified = 
-                 parse_db_timestamp (j_client_modified->valuestring); 
-              }
-            list_append (list, stat);
-            }
-          else if (j_tag && strcmp (j_tag->valuestring, "folder") == 0 && include_dirs)
-            {
-            DBStat *stat = malloc (sizeof (DBStat));
-            memset (stat, 0, sizeof (DBStat));
-            stat->type = DBSTAT_FOLDER;
-	    cJSON *item = cJSON_GetArrayItem (entries, i);
-	    cJSON *j_path = cJSON_GetObjectItem (item, "path_display");
-	    if (j_path)
-	      stat->path  = strdup (j_path->valuestring); 
-	    cJSON *j_name = cJSON_GetObjectItem (item, "name");
-	    if (j_name)
-	      stat->name  = strdup (j_name->valuestring); 
-            list_append (list, stat);
-            }
-          }
-        cJSON *has_more = cJSON_GetObjectItem (root, "has_more");
-        if (has_more) 
+          dropbox_stat_set_type (stat, DBSTAT_NONE);
+	  }
+        else 
 	  {
-          if (has_more->valueint)
-            {
-            cJSON *j_cursor = cJSON_GetObjectItem (root, "cursor");
-           _dropbox_get_file_list (token, "", recursive, include_dirs, 
-               j_cursor->valuestring, 
-               list, error);
-            }
+	  cJSON *root = cJSON_Parse (resp); 
+	  if (root)
+	    {
+	    cJSON *j_tag  = cJSON_GetObjectItem (root, ".tag");
+	    if (j_tag)
+	      {
+	      if (strcmp (j_tag->valuestring, "folder") == 0)
+                dropbox_stat_set_type (stat, DBSTAT_FOLDER);
+	      else 
+                dropbox_stat_set_type (stat, DBSTAT_FILE);
+
+	    cJSON *j_path = cJSON_GetObjectItem (root, "path_display");
+	    if (j_path)
+	      dropbox_stat_set_path (stat, j_path->valuestring); 
+	    cJSON *j_name = cJSON_GetObjectItem (root, "name");
+	    if (j_name)
+	      dropbox_stat_set_name (stat, j_name->valuestring); 
+
+	      cJSON *j_size = cJSON_GetObjectItem (root, "size");
+	      if (j_size)
+		dropbox_stat_set_length (stat, j_size->valueint);      
+
+	      cJSON *j_server_modified  = cJSON_GetObjectItem 
+                 (root, "server_modified");
+	      if (j_server_modified)
+	        {
+                dropbox_stat_set_server_modified 
+                  (stat, dropbox_parse_timestamp 
+                    (j_server_modified->valuestring)); 
+                }
+
+	      cJSON *j_client_modified  = cJSON_GetObjectItem 
+                 (root, "client_modified");
+	      if (j_client_modified)
+	        {
+                dropbox_stat_set_client_modified 
+                  (stat, dropbox_parse_timestamp 
+                    (j_client_modified->valuestring)); 
+                }
+
+	      cJSON *j_hash  = cJSON_GetObjectItem 
+                 (root, "content_hash");
+	      if (j_hash)
+	        {
+                dropbox_stat_set_hash (stat, j_hash->valuestring);
+                }
+	      }
+	    else
+	      {
+	      *error = dropbox_decode_server_error (resp);
+	      }
+	    cJSON_Delete (root);
+	    }
+	  else
+	    {
+	    *error = strdup (resp);
+	    }
           }
-        ret = TRUE;
-        }
+	}
       else
-        {
-        char *msg = decode_server_error (text);
-        if (error) *error = msg;
-        }
+	{
+	*error = strdup (curl_error); 
+	}
+
+      free (response.memory);
+      curl_slist_free_all (headers); 
+      free (auth_header);
+      free (data);
+      curl_easy_cleanup (curl);
       }
     else
       {
-      if (error) *error = make_parse_error_message();
+      *error = strdup (EASY_INIT_FAIL); 
+      // TODO
       }
-
-    cJSON_Delete (root);
-    free (text);
     }
-  return ret;
+  OUT
   }
 
-
-/*---------------------------------------------------------------------------
-dropbox_get_fole_list
----------------------------------------------------------------------------*/
-BOOL dropbox_get_file_list (const char *token, const char *path, 
-    BOOL recursive, BOOL include_dirs, List *list, char **error)
-  {
-  return _dropbox_get_file_list (token, path, recursive, include_dirs, NULL, 
-    list, error);
-  }
 
 
 /*---------------------------------------------------------------------------
@@ -438,32 +271,85 @@ dropbox_get_token
 ---------------------------------------------------------------------------*/
 char *dropbox_get_token (const char *code, char **error)
   {
+  IN
+
   char *ret = NULL;
-  char *text = curl_issue_token (code, error);
-  if (!*error)
+
+  log_debug ("dropbox_get_token: make token from code \"%s\"", code);
+
+  CURL* curl = curl_easy_init();
+  if (curl)
     {
-    //printf ("text=%s\n", text);
-    cJSON *root = cJSON_Parse (text); 
-    if (root)
+    struct DBWriteStruct response;
+    response.memory = malloc(1);  
+    response.size = 0;    
+ 
+    struct curl_slist *headers = NULL;
+
+    curl_easy_setopt (curl, CURLOPT_POST, 1);
+
+    char *curl_url = NULL;
+    char *curl_creds = NULL;
+    asprintf (&curl_url, 
+      "https://api.dropboxapi.com/oauth2/token?grant_type=authorization_code&code=%s", 
+      code); 
+    asprintf (&curl_creds, 
+      "%s:%s", APP_KEY, APP_SECRET); 
+    curl_easy_setopt (curl, CURLOPT_URL, curl_url);
+    curl_easy_setopt (curl, CURLOPT_USERPWD, curl_creds);
+
+    log_debug ("curl URL is %s", curl_url);
+    log_debug ("curl creds are %s", curl_creds);
+
+    char curl_error [CURL_ERROR_SIZE];
+    curl_easy_setopt (curl, CURLOPT_ERRORBUFFER, curl_error);
+    curl_easy_setopt (curl, CURLOPT_WRITEFUNCTION, dropbox_write_callback);
+    curl_easy_setopt (curl, CURLOPT_WRITEDATA, &response);
+    curl_easy_setopt (curl, CURLOPT_HTTPHEADER, headers);
+    curl_easy_setopt (curl, CURLOPT_POSTFIELDS, "");
+
+    log_debug ("About to issue request");
+    CURLcode curl_code = curl_easy_perform (curl);
+    log_debug ("Request complete -- error code %d", curl_code);
+    if (curl_code == 0)
       {
-      cJSON *j_token  = cJSON_GetObjectItem (root, "access_token");
-      if (j_token)
+      const char *resp = response.memory;
+      cJSON *root = cJSON_Parse (resp); 
+      if (root)
         {
-        ret = strdup (j_token->valuestring);
+        cJSON *j_token  = cJSON_GetObjectItem (root, "access_token");
+        if (j_token)
+          {
+          ret = strdup (j_token->valuestring);
+          }
+        else
+          {
+          *error = dropbox_decode_server_error (resp);
+          }
+         cJSON_Delete (root);
         }
       else
         {
-        *error = decode_server_error (text);
+        *error = dropbox_decode_server_error (resp);
         }
       }
     else
       {
-      *error = make_parse_error_message();
+      *error = strdup (curl_error); 
       }
 
-    cJSON_Delete (root);
+    free (curl_url);
+    free (curl_creds);
+    free (response.memory);
+    curl_slist_free_all (headers); 
+    curl_easy_cleanup (curl);
     }
-  //printf ("hello XXXXX %s\n", ret);
+  else
+    {
+    *error = strdup (EASY_INIT_FAIL); 
+    }
+
+  OUT
   return ret;
   }
 
@@ -512,94 +398,72 @@ BOOL dropbox_hash (const char *filename, char output_hash[65], char **error)
 /*---------------------------------------------------------------------------
 dropbox_move
 ---------------------------------------------------------------------------*/
-BOOL dropbox_move (const char *token, const char *old_path, const char *new_path,
-    char **error)
+void dropbox_move (const char *token, const char *old_path, 
+           const char *new_path, char **error)
   {
-  BOOL ret = FALSE;
-
-  char *text = curl_issue_move (token, old_path, new_path, error); 
-  if (text)
+  IN
+  log_debug ("dropbox_move old=%s new=%s", old_path, new_path);
+  CURL* curl = curl_easy_init();
+  if (curl)
     {
-    cJSON *root = cJSON_Parse (text); 
-    if (root)
+    struct DBWriteStruct response;
+    response.memory = malloc(1);  
+    response.size = 0;    
+   
+    struct curl_slist *headers = NULL;
+
+    curl_easy_setopt (curl, CURLOPT_POST, 1);
+
+    char *auth_header, *data;
+    asprintf (&auth_header, "Authorization: Bearer %s", token);
+    headers = curl_slist_append (headers, auth_header);
+    headers = curl_slist_append (headers, 
+	"Content-Type: application/json");
+
+    curl_easy_setopt (curl, CURLOPT_URL, 
+	"https://api.dropboxapi.com/2/files/move");
+
+    asprintf (&data, 
+	"{\"from_path\":\"%s\",\"to_path\":\"%s\"}", old_path, new_path);
+    headers = curl_slist_append (headers, data);
+
+    char curl_error [CURL_ERROR_SIZE];
+    curl_easy_setopt (curl, CURLOPT_ERRORBUFFER, curl_error);
+    curl_easy_setopt (curl, CURLOPT_WRITEFUNCTION, dropbox_write_callback);
+    curl_easy_setopt (curl, CURLOPT_WRITEDATA, &response);
+    curl_easy_setopt (curl, CURLOPT_HTTPHEADER, headers);
+    curl_easy_setopt (curl, CURLOPT_POSTFIELDS, data);
+
+    CURLcode curl_code = curl_easy_perform (curl);
+    if (curl_code == 0)
       {
-      cJSON *j_tag  = cJSON_GetObjectItem (root, ".tag");
-      if (j_tag)
-	{
-        ret = TRUE;
-        // That's good enough to assume success
-	}
-      else
-        {
-	*error = decode_server_error (text);
-	}
-      cJSON_Delete (root);
+      dropbox_check_response_for_error (response.memory, error);
       }
     else
       {
-      *error = make_parse_error_message();
+      *error = strdup (curl_error); 
       }
 
-    free (text);
-    }
-
-  return ret;
-  }
-
-
-
-
-
-/*---------------------------------------------------------------------------
-dropbox_reason
-Convert HTTP code to failure reason -- these codes are not partcularly
-well aligned with usual HTTP practice
----------------------------------------------------------------------------*/
-static const char *dropbox_reason (int code)
-  {
-  switch (code)
-    {
-    case 200: return "OK";
-    case 400: return "Authentication token expired or no permissions";
-    case 409: return "Not found, or no permissions";
-    }
-    
-  return "Unknown error";
-  }
- 
-
-/*---------------------------------------------------------------------------
-dropbox_upload_file
----------------------------------------------------------------------------*/
-BOOL dropbox_upload_file (const char *token, const char *source, 
-    const char *target, char **error)
-  {
-  BOOL ret = FALSE;
-
-  int resp = 0;
-  curl_issue_upload_file (token, source, target, &resp, error);
-  log_debug ("Curl response is %d", resp);
-
-  if (resp == 200)
-    {
-    // Do nothing -- it's OK
+    free (response.memory);
+    curl_slist_free_all (headers); 
+    free (auth_header);
+    free (data);
+    curl_easy_cleanup (curl);
     }
   else
     {
-    // TODO -- parse the returned file as a potential JSON response
-    asprintf (error, "Can't upload %s: %s", source, dropbox_reason (resp));
-    unlink (target);
+    *error = strdup (EASY_INIT_FAIL); 
     }
-
-  return ret; 
+  OUT
   }
 
-
 /*---------------------------------------------------------------------------
-parse_db_timestammp
+dropbox_parse_timestammp
 ---------------------------------------------------------------------------*/
-static time_t parse_db_timestamp (const char *s)
+static time_t dropbox_parse_timestamp (const char *s)
   {
+  IN
+  log_debug ("Parsing timestamp %s", s);
   char *old_tz = getenv ("TZ");
 
   // Ugh. This sucks. There is no UTC/GMT equivalent of mktime() in
@@ -623,19 +487,512 @@ static time_t parse_db_timestamp (const char *s)
     unsetenv ("TZ");
     }
 
+  log_debug ("Parsed time_t is %ld", t);
+  OUT
   return t;
   }
 
 
 /*---------------------------------------------------------------------------
-make_parse_error_message
-//TODO
+dropbox_parse_file_list
 ---------------------------------------------------------------------------*/
-static char *make_parse_error_message (void)
+static void dropbox_parse_file_list (const char *token, const char *path, 
+    const char *response, BOOL include_dirs, BOOL recursive, List *list, 
+    char **error)
   {
-  char *ret = NULL;
-  asprintf (&ret, "JSON parse error near here: %s", cJSON_GetErrorPtr());
-  return ret;
+  IN
+  cJSON *root = cJSON_Parse (response); 
+  if (root)
+    {
+    cJSON *entries = cJSON_GetObjectItem (root, "entries");
+    if (entries) 
+      {
+      int i, n = cJSON_GetArraySize (entries);
+      for (i = 0; i < n; i++)
+	{
+	cJSON *item = cJSON_GetArrayItem (entries, i);
+	cJSON *j_tag = cJSON_GetObjectItem (item, ".tag");
+	if (j_tag && strcmp (j_tag->valuestring, "file") == 0)
+	  {
+          DBStat *stat = dropbox_stat_create();
+	  stat->type = DBSTAT_FILE;
+	  cJSON *item = cJSON_GetArrayItem (entries, i);
+	  cJSON *j_path = cJSON_GetObjectItem (item, "path_display");
+	  if (j_path)
+	    stat->path  = strdup (j_path->valuestring); 
+	  cJSON *j_name = cJSON_GetObjectItem (item, "name");
+	  if (j_name)
+	    stat->name  = strdup (j_name->valuestring); 
+	  cJSON *j_size = cJSON_GetObjectItem (item, "size");
+	  if (j_size)
+	    stat->length = j_size->valueint;      
+	  cJSON *j_server_modified  = cJSON_GetObjectItem 
+	     (item, "server_modified");
+	  if (j_server_modified)
+	    {
+	    stat->server_modified = 
+	       dropbox_parse_timestamp (j_server_modified->valuestring); 
+	    }
+	  cJSON *j_client_modified  = cJSON_GetObjectItem 
+	     (item, "client_modified");
+	  if (j_client_modified)
+	    {
+	    stat->client_modified = 
+	       dropbox_parse_timestamp (j_client_modified->valuestring); 
+	    }
+	  list_append (list, stat);
+	  }
+	else if (j_tag && strcmp (j_tag->valuestring, "folder") == 0 && 
+            include_dirs)
+	  {
+          DBStat *stat = dropbox_stat_create();
+	  stat->type = DBSTAT_FOLDER;
+	  cJSON *item = cJSON_GetArrayItem (entries, i);
+	  cJSON *j_path = cJSON_GetObjectItem (item, "path_display");
+	  if (j_path)
+	    stat->path  = strdup (j_path->valuestring); 
+	  cJSON *j_name = cJSON_GetObjectItem (item, "name");
+	  if (j_name)
+	    stat->name  = strdup (j_name->valuestring); 
+	  list_append (list, stat);
+	  }
+	}
+      cJSON *has_more = cJSON_GetObjectItem (root, "has_more");
+      if (has_more) 
+	{
+	if (has_more->valueint)
+	  {
+	  cJSON *j_cursor = cJSON_GetObjectItem (root, "cursor");
+          const char *cursor = j_cursor->valuestring;
+          _dropbox_list_files (token, path, list, include_dirs, 
+             recursive, cursor, error); 
+	  }
+	}
+      }
+    else
+      {
+      char *msg = dropbox_decode_server_error (response);
+      if (error) *error = msg;
+      }
+    }
+  else
+    {
+    if (error) *error = strdup (response); 
+    }
+
+  cJSON_Delete (root);
+  OUT
   }
+
+
+/*---------------------------------------------------------------------------
+_dropbox_list_files
+---------------------------------------------------------------------------*/
+void _dropbox_list_files (const char *token, const char *path, 
+    List *list, BOOL include_dirs, BOOL recursive, const char *cursor, 
+    char **error)
+  {
+  IN
+  log_debug ("token=%s, path=%s, include_dirs=%d, recursive=%d, cursor=%s",
+    token, path, include_dirs, recursive, cursor);
+  CURL* curl = curl_easy_init();
+  if (curl)
+    {
+    struct DBWriteStruct response;
+    response.memory = malloc(1);  
+    response.size = 0;    
+ 
+    struct curl_slist *headers = NULL;
+
+    curl_easy_setopt (curl, CURLOPT_POST, 1);
+
+    char *auth_header, *data;
+    asprintf (&auth_header, "Authorization: Bearer %s", token);
+    headers = curl_slist_append (headers, auth_header);
+    headers = curl_slist_append (headers, "Content-Type: application/json");
+
+    if (cursor)
+      {
+      curl_easy_setopt (curl, CURLOPT_URL, 
+        "https://api.dropboxapi.com/2/files/list_folder/continue");
+
+      asprintf (&data, "{\"cursor\":\"%s\"}", cursor); 
+      }
+    else
+      {
+      curl_easy_setopt (curl, CURLOPT_URL, 
+        "https://api.dropboxapi.com/2/files/list_folder");
+
+      asprintf (&data, "{\"path\":\"%s\",\"recursive\":%s}", path,
+       recursive ? "true": "false");
+      }
+
+    char curl_error [CURL_ERROR_SIZE];
+    curl_easy_setopt (curl, CURLOPT_ERRORBUFFER, curl_error);
+    curl_easy_setopt (curl, CURLOPT_WRITEFUNCTION, dropbox_write_callback);
+    curl_easy_setopt (curl, CURLOPT_WRITEDATA, &response);
+    curl_easy_setopt (curl, CURLOPT_POSTFIELDS, data);
+    curl_easy_setopt (curl, CURLOPT_HTTPHEADER, headers);
+
+    CURLcode curl_code = curl_easy_perform (curl);
+    if (curl_code == 0)
+      {
+      dropbox_parse_file_list (token, path, response.memory, include_dirs, 
+        recursive, list, error);
+      }
+    else
+      {
+      *error = strdup (curl_error); 
+      }
+
+    free (response.memory);
+    curl_slist_free_all (headers); 
+    free (auth_header);
+    free (data);
+    curl_easy_cleanup (curl);
+    }
+  else
+    {
+    *error = strdup (EASY_INIT_FAIL); 
+    // TODO
+    }
+
+  OUT
+  }
+
+
+/*---------------------------------------------------------------------------
+dropbox_list_files
+---------------------------------------------------------------------------*/
+void dropbox_list_files (const char *token, const char *path, 
+    List *list, BOOL include_dirs, BOOL recursive, char **error)
+  {
+  IN
+  _dropbox_list_files (token, path, list, include_dirs, recursive, 
+     NULL, error);
+  OUT
+  }
+
+
+/*---------------------------------------------------------------------------
+dropbox_newfolder
+---------------------------------------------------------------------------*/
+void dropbox_newfolder (const char *token, const char *new_path,
+           char **error)
+  {
+  IN
+  log_debug ("dropbox_newfolder path=%s", new_path); 
+  CURL* curl = curl_easy_init();
+  if (curl)
+    {
+    struct DBWriteStruct response;
+    response.memory = malloc(1);  
+    response.size = 0;    
+   
+    struct curl_slist *headers = NULL;
+
+    curl_easy_setopt (curl, CURLOPT_POST, 1);
+
+    char *auth_header, *data;
+    asprintf (&auth_header, "Authorization: Bearer %s", token);
+    headers = curl_slist_append (headers, auth_header);
+    headers = curl_slist_append (headers, 
+	"Content-Type: application/json");
+
+    curl_easy_setopt (curl, CURLOPT_URL, 
+	"https://api.dropboxapi.com/2/files/create_folder");
+
+    asprintf (&data, 
+	"{\"path\":\"%s\"}", new_path);
+    headers = curl_slist_append (headers, data);
+
+    char curl_error [CURL_ERROR_SIZE];
+    curl_easy_setopt (curl, CURLOPT_ERRORBUFFER, curl_error);
+    curl_easy_setopt (curl, CURLOPT_WRITEFUNCTION, dropbox_write_callback);
+    curl_easy_setopt (curl, CURLOPT_WRITEDATA, &response);
+    curl_easy_setopt (curl, CURLOPT_HTTPHEADER, headers);
+    curl_easy_setopt (curl, CURLOPT_POSTFIELDS, data);
+
+    CURLcode curl_code = curl_easy_perform (curl);
+    if (curl_code == 0)
+      {
+      dropbox_check_response_for_error (response.memory, error);
+      }
+    else
+      {
+      *error = strdup (curl_error); 
+      }
+
+    free (response.memory);
+    curl_slist_free_all (headers); 
+    free (auth_header);
+    free (data);
+    curl_easy_cleanup (curl);
+    }
+  else
+    {
+    *error = strdup (EASY_INIT_FAIL); 
+    }
+  OUT
+  }
+
+
+/*---------------------------------------------------------------------------
+dropbox_deleete
+---------------------------------------------------------------------------*/
+void dropbox_delete (const char *token, const char *path, 
+    char **error)
+  {
+  IN
+  log_debug ("dropbox_delete path=%s", path); 
+  CURL* curl = curl_easy_init();
+  if (curl)
+    {
+    struct DBWriteStruct response;
+    response.memory = malloc(1);  
+    response.size = 0;    
+   
+    struct curl_slist *headers = NULL;
+
+    curl_easy_setopt (curl, CURLOPT_POST, 1);
+
+    char *auth_header, *data;
+    asprintf (&auth_header, "Authorization: Bearer %s", token);
+    headers = curl_slist_append (headers, auth_header);
+    headers = curl_slist_append (headers, 
+	"Content-Type: application/json");
+
+    curl_easy_setopt (curl, CURLOPT_URL, 
+	"https://api.dropboxapi.com/2/files/delete");
+
+    asprintf (&data, 
+	"{\"path\":\"%s\"}", path);
+    headers = curl_slist_append (headers, data);
+
+    char curl_error [CURL_ERROR_SIZE];
+    curl_easy_setopt (curl, CURLOPT_ERRORBUFFER, curl_error);
+    curl_easy_setopt (curl, CURLOPT_WRITEFUNCTION, dropbox_write_callback);
+    curl_easy_setopt (curl, CURLOPT_WRITEDATA, &response);
+    curl_easy_setopt (curl, CURLOPT_HTTPHEADER, headers);
+    curl_easy_setopt (curl, CURLOPT_POSTFIELDS, data);
+
+    CURLcode curl_code = curl_easy_perform (curl);
+    if (curl_code == 0)
+      {
+      dropbox_check_response_for_error (response.memory, error);
+      }
+    else
+      {
+      *error = strdup (curl_error); 
+      }
+
+    free (response.memory);
+    curl_slist_free_all (headers); 
+    free (auth_header);
+    free (data);
+    curl_easy_cleanup (curl);
+    }
+  else
+    {
+    *error = strdup (EASY_INIT_FAIL); 
+    }
+  OUT
+  }
+
+
+/*---------------------------------------------------------------------------
+dropbox_download
+---------------------------------------------------------------------------*/
+void dropbox_download (const char *token, const char *source, 
+    const char *target, char **error)
+  {
+  IN
+  log_debug ("dropbox_download token=%s, source=%s, "
+    "target=%s",
+    token, source, target); 
+
+  int f = open (target, O_CREAT | O_TRUNC | O_WRONLY, 0666);
+  if (f >= 0) // 0 seems to be possible on Android, at least
+    {
+    struct DBStoreStruct ss;
+    ss.f = f;
+    CURL* curl = curl_easy_init();
+    if (curl)
+      {
+      struct curl_slist *headers = NULL;
+
+      curl_easy_setopt (curl, CURLOPT_POST, 1);
+
+      char *auth_header, *data;
+      asprintf (&auth_header, "Authorization: Bearer %s", token);
+      headers = curl_slist_append (headers, auth_header);
+      // Dropbox insists that the content-type is empty
+      headers = curl_slist_append (headers, 
+	"Content-Type: ");
+
+      curl_easy_setopt (curl, CURLOPT_URL, 
+	"https://content.dropboxapi.com/2/files/download");
+
+      asprintf (&data, 
+	"Dropbox-API-Arg: {\"path\":\"%s\"}", source);
+      headers = curl_slist_append (headers, data);
+
+      char curl_error [CURL_ERROR_SIZE];
+      curl_easy_setopt (curl, CURLOPT_ERRORBUFFER, curl_error);
+      curl_easy_setopt (curl, CURLOPT_HTTPHEADER, headers);
+      curl_easy_setopt (curl, CURLOPT_WRITEFUNCTION, dropbox_store_callback);
+      curl_easy_setopt (curl, CURLOPT_WRITEDATA, (void *) &ss);
+      // It seems we need to post _something_, or curl just gets stuck
+      curl_easy_setopt (curl, CURLOPT_POSTFIELDS, "");
+
+      CURLcode curl_code = curl_easy_perform (curl);
+      if (curl_code == 0)
+	{
+        // We just have to assume that everything went OK. If it didn't,
+        //  there might be an error message in the response itself; but
+        //  how to distinguish this from a valid file, when we don't
+        //  know in advance what the file should contain?
+	}
+      else
+	{
+	*error = strdup (curl_error); 
+	}
+
+      curl_slist_free_all (headers); 
+      free (auth_header);
+      free (data);
+      curl_easy_cleanup (curl);
+      }
+    else
+      {
+      *error = strdup (EASY_INIT_FAIL); 
+      }
+
+    close (f);
+    }
+  else
+    {
+    asprintf (error, "Can't write %s: %s", source, strerror (errno));
+    }
+
+  OUT
+  }
+
+
+/*---------------------------------------------------------------------------
+dropbox_upload
+---------------------------------------------------------------------------*/
+void dropbox_upload (const char *token, const char *source, 
+    const char *target, char **error)
+  {
+  IN
+  log_debug ("dropbox_upload token=%s, source=%s, "
+    "target=%s",
+    token, source, target); 
+  struct stat sb;
+  stat (source, &sb);
+  int length = (int) sb.st_size;
+
+  FILE *f = fopen (source, "r");
+  if (f)
+    {
+    CURL* curl = curl_easy_init();
+    if (curl)
+      {
+      struct DBWriteStruct response;
+      response.memory = malloc(1);  
+      response.size = 0;    
+   
+      struct curl_slist *headers = NULL;
+
+      curl_easy_setopt (curl, CURLOPT_POST, 1);
+
+      char *auth_header, *data;
+      asprintf (&auth_header, "Authorization: Bearer %s", token);
+      headers = curl_slist_append (headers, auth_header);
+      headers = curl_slist_append (headers, 
+	"Content-Type: application/octet-stream");
+
+      curl_easy_setopt (curl, CURLOPT_URL, 
+	"https://content.dropboxapi.com/2/files/upload");
+
+      asprintf (&data, 
+	"Dropbox-API-Arg: {\"path\":\"%s\",\"mode\":\"overwrite\"}", target);
+      headers = curl_slist_append (headers, data);
+
+      char curl_error [CURL_ERROR_SIZE];
+      curl_easy_setopt (curl, CURLOPT_ERRORBUFFER, curl_error);
+      curl_easy_setopt (curl, CURLOPT_WRITEFUNCTION, dropbox_write_callback);
+      curl_easy_setopt (curl, CURLOPT_WRITEDATA, &response);
+      curl_easy_setopt (curl, CURLOPT_READDATA, (void *)f);
+      curl_easy_setopt (curl, CURLOPT_HTTPHEADER, headers);
+      curl_easy_setopt (curl, CURLOPT_INFILESIZE, length);
+      curl_easy_setopt (curl, CURLOPT_POSTFIELDSIZE, length);
+
+      CURLcode curl_code = curl_easy_perform (curl);
+      if (curl_code == 0)
+	{
+        dropbox_check_response_for_error (response.memory, error);
+	}
+      else
+	{
+	*error = strdup (curl_error); 
+	}
+
+      free (response.memory);
+      curl_slist_free_all (headers); 
+      free (auth_header);
+      free (data);
+      curl_easy_cleanup (curl);
+      }
+    else
+      {
+      *error = strdup (EASY_INIT_FAIL); 
+      // TODO
+      }
+    fclose(f);
+    }
+  else
+    {
+    asprintf (error, "Can't read %s: %s", source, strerror (errno));
+    }
+  OUT
+  }
+
+
+/*---------------------------------------------------------------------------
+dropbox_write_callback
+Callback for storing server response into an expandable memory block
+---------------------------------------------------------------------------*/
+static size_t dropbox_write_callback (void *contents, size_t size, 
+    size_t nmemb, void *userp)
+  {
+  IN
+  size_t realsize = size * nmemb;
+  struct DBWriteStruct *mem = (struct DBWriteStruct *)userp;
+  mem->memory = realloc (mem->memory, mem->size + realsize + 1);
+  memcpy(&(mem->memory[mem->size]), contents, realsize);
+  mem->size += realsize;
+  mem->memory[mem->size] = 0;
+  OUT
+  return realsize;
+  }
+
+
+/*---------------------------------------------------------------------------
+dropbox_store_callback
+Callback for storing server response into a disk file 
+---------------------------------------------------------------------------*/
+static size_t dropbox_store_callback (void *contents, size_t size, 
+    size_t nmemb, void *userp)
+  {
+  IN
+  size_t realsize = size * nmemb;
+  struct DBStoreStruct *ss = (struct DBStoreStruct *)userp;
+  write (ss->f, contents, realsize);
+  OUT
+  return realsize;
+  }
+
 
 

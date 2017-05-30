@@ -1,8 +1,7 @@
 NAME    := dbcmd
-VERSION := 0.0.1
-#CC      :=  /home/kevin/lib/android-9-toolchain_2/bin/arm-linux-androideabi-gcc
+VERSION := 0.0.2
 CC      :=  gcc 
-LIBS    := -lm
+LIBS    := -lm -lcurl
 TARGET	:= $(NAME) 
 SOURCES := $(shell find src/ -type f -name *.c)
 OBJECTS := $(patsubst src/%,build/%,$(SOURCES:.c=.o))
@@ -24,7 +23,7 @@ build/%.o: src/%.c
 	$(CC) $(CFLAGS) -MD -MF $(@:.o=.deps) -c -o $@ $<
 
 clean:
-	@echo "  Cleaning..."; $(RM) -r build/ $(TARGET) image out *.deb
+	@echo "  Cleaning..."; $(RM) -r build/ $(TARGET) 
 
 install: $(TARGET)
 	mkdir -p $(DESTDIR) $(BINDIR) $(MANDIR)

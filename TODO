@@ -1,5 +1,3 @@
-Support wildcards in delete command
-Support wildcards in move command, and figure out whether the target is a directory
-Provide a way to pass arbitrary curl arguments (e.g., proxy) 
-Expand directory info
+Handle wildcards in list command.
+
 

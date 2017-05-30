@@ -1,0 +1,8 @@
+0.0.1 March 2017
+First working version
+
+0.0.2 May 2017
+Complete re-implementation, with the following improvements:
+* libcurl is now linked, rather than invoking the curl utility via the
+  operating system shell. This gives much better reporting of errors
+

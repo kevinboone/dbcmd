@@ -19,13 +19,15 @@ It can list files on the server and retrieve their meta-data. It is not
 intended as a substitute for the proprietary Dropbox client; rather
 it is a way to get access to Dropbox on systems that can't run this
 client. It is written in C, to have as few dependencies as possible. 
+In particular, it can be build for Android, and Chromebooks with
+Android emulation.
  
 
 .SH EXAMPLES
 
 .BI dbcmd\ -r\ get\ /docs/accounts/*.doc\ accounts/ 
 
-Download files the match pattern \fI*.doc\fR from \fI/docs/accounts\fR on the 
+Download files that match pattern \fI*.doc\fR from \fI/docs/accounts\fR on the 
 Dropbox server, and any of its subfolders, 
 and copy them to the local directory \fIaccounts\fR, maintaining
 the same structure.
@@ -53,7 +55,9 @@ To see a list of commands:
 
 These options apply to all commands, although the interpretation might
 differ between commands. For more information, see the manual pages
-for the individual commands.
+for the individual commands. Note that options that take an argument,
+such as \fIloglevel\fR, must use an equals sign, not a space, between
+the option and its argument.
 
 .TP
 .BI -a,\-\-auth
@@ -67,18 +71,34 @@ Set the logging verbosity from 0 (errors only) to 3 (debug tracing). The
 default is 2.
 .LP
 .TP
+.BI -L,\-\-dry-run
+Don't change anything -- just should would would be done.
+.LP
+.TP
 .BI -r,\-\-recursive
 Download, upload, or list files recursively
+.LP
+.TP
+.BI -y,\-\-yes
+Don't prompt -- just carry out the action
 .LP
 
 .SH NOTES
 
 .SS Folder naming 
 
-Names that refer to Dropbox folders \fImust\fR end in a forward
-slash (/) in this utility. This is true even if the folder exists. Failing to append the
-forward slash will result in trying to fetch a single file, rather than
-the contents of a folder. 
+Names that refer to Dropbox folders \fImust\fR start with a forward
+slash (/). In principle, because this is a universal rule in Dropbox 
+(its API has
+no concept of a working directory) a missing forward slash could be
+inserted automatically; but missing out the leading slash is probably a
+mistake, and one that perhaps should not be fixed silently. 
+
+On the Dropbox server, folder names must not end with a trailing forward
+slash. In this utility, however, whether a folder ends with a trailing
+slash or not is sometimes significant -- this is to maintain compatibility
+with \fIresync(1)\fI directory semantics. See the manual pages for
+specific commands for more information on this.
 
 Unlike \fIrsync(1)\fR, this utility will accept file wildcard characters in
 a folder expansion (as shown in the example above). Only files matching
@@ -86,17 +106,22 @@ the pattern will be copied.
 
 .SS File list limit
 
-\fIdbcmd\fR imposes no limit -- other than time and memory -- 
-on the number of fiiles that can be uploaded
-in a single operation. The Dropbox API may have such a limit, but it isn't
-documented. However, this utility is not designed to handle huge synchronization
-operations. When handling large file sets, each file has to have a hash computed,
-and the complete list has to be passed over the wire. This is the case even
-if only a few files need actually to be copied. 
+\fIdbcmd\fR imposes no limit -- other than time and memory -- on the number of
+fiiles that can be uploaded in a single operation. The Dropbox API may have
+such a limit, but it isn't documented. However, this utility is not designed to
+handle huge synchronization operations. When handling large file sets, each
+file has to have a hash computed, and the complete list has to be passed over
+the wire. This is the case even if only a few files need actually to be copied. 
+
+.SS Upload size limit
+
+This utility cannot upload a file larger that 150Mb. This is a limitation
+of the Dropbox API.
 
 .SS Timestamps
 
-The timestamp set on the file will be the time it is written to the local
+The timestamp set on the file when it is downloaded will be the time 
+it is written to the local
 filesystem. No attempt is made to synchronize timestamps, because the
 Dropbox sync process uses hashes, not timestamps, to determine whether
 a file is up to date.

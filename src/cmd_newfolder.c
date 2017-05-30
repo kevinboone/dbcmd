@@ -1,6 +1,6 @@
 /*---------------------------------------------------------------------------
 dbcmd
-cmd_move.c
+cmd_newfolder.c
 GPL v3.0
 ---------------------------------------------------------------------------*/
 #define _GNU_SOURCE
@@ -23,32 +23,20 @@ GPL v3.0
 #include "errmsg.h"
 
 
-
 /*==========================================================================
-cmd_move
+cmd_newfolder
 *==========================================================================*/
-int cmd_move (const CmdContext *context, int argc, char **argv)
+int cmd_newfolder (const CmdContext *context, int argc, char **argv)
   {
   IN
   int ret = 0;
 
-  log_debug ("Starting move command");
+  log_debug ("Starting newfolder command");
 
-  if (argc != 3)
+  if (argc < 2)
     {
-    log_error ("%s: %s: this command takes two arguments\n",
+    log_error ("%s: %s: this command takes one or more arguments\n",
       NAME, argv[0]);
-    OUT
-    return EINVAL;
-    }
-
-  const char *from = argv[1];
-  const char *to = argv[2];
-
-  if (from[0] != '/' || to[0] != '/')
-    {
-    log_error ("%s: %s: %s\n",
-      NAME, argv[0], ERROR_STARTSLASH);
     OUT
     return EINVAL;
     }
@@ -58,19 +46,29 @@ int cmd_move (const CmdContext *context, int argc, char **argv)
   char *token = token_init (&error);
   if (token)
     {
-    if (context->dry_run)
+    int i;
+    for (i = 1; i < argc; i++)
       {
-      printf ("Move %s to %s\n", from, to); 
-      }
-    else
-      {
-      dropbox_move (token, from, to, &error); 
-      if (error)
-	{
-	log_error ("%s: %s: %s\n", NAME, argv[0], error);
-	free (error);
-	ret = EINVAL;
-	}
+      char *folder = strdup (argv[i]);
+      if (folder[0] == '/')
+        {
+        if (folder[strlen(folder) - 1] == '/')
+          folder[strlen(folder) - 1] = 0;
+        dropbox_newfolder (token, folder, &error); 
+        if (error)
+          {
+          log_error ("%s: %s: %s\n", NAME, argv[0], error);
+          free (error);
+          ret = EINVAL;
+          }
+        }
+      else
+        {
+        log_error ("%s: %s: %s\n", NAME, argv[0],  
+          ERROR_STARTSLASH);
+        free (error);
+        }
+      free (folder);
       }
     free (token);
     }
@@ -85,7 +83,6 @@ int cmd_move (const CmdContext *context, int argc, char **argv)
   OUT
   return ret;
   }
-
 
 
 

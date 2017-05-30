@@ -9,18 +9,17 @@
 Upload files to Dropbox
 .SH SYNOPSIS
 .B dbcmd 
-put\ [options]\ {local_path}\ [remote_path] 
+put\ [options]\ {local_paths...}\ [remote_path] 
 .PP
 
 .SH DESCRIPTION
 \fIdbcmd put\fR uploads one or more files to the Dropbox server, 
 attempting to maintain a folder structure on the server that matches
-the loocal filesystem. The 
+the loocal filesystem. Each 
 \fIlocal-path\fR argument can specify a single file, a directory, or
 a file pattern with wildcards. Unless a single file is specified, the
-\fI[remote-path]\fR argument must denote a Dropbox folder that already
-exists. This folder name \fImust\fR start and end with a forward-slash
-(/) character. 
+\fI{remote-path}\fR argument must denote a Dropbox folder that already
+exists (but see notes below). 
 
 This command will not upload files which have the same SHA-256 hash as
 they have on the server -- these are deemed to be unchanged. It will never
@@ -41,27 +40,52 @@ local filesystem, maintaining
 the same folder structure in the remote directory \fI/docs/accounts/\fR.
 
 .SH "OPTIONS"
-.TP
-.BI -a,\-\-auth
-Force a re-authentication against the Dropbox server, and get a new
-authentication token. The token is stored in 
-\fI$HOME/.dbcmdr_token\rR.
-.LP
-.TP
-.BI -r,\-\-recursive
-Upload directories recursively
-.LP
+
+See main manual page.
 
 .SH NOTES
 
+.SS Dry-run operation
+
+The \fI--dry-run\fR options will show the pathnanes on the server and
+client, of the files that will be transferred, without transferring
+them. Note that this dry run can be as time-consuming as an actual
+transfer, because the file hash values still have to be computed, to
+determine whether a transfer will take place or not.
+
 .SS Folder naming 
 
-Names that refer to Dropbox folders \fImust\fR end in a forward
-slash (/) in this utility. This is true even if the folder exists.
+Names that refer to Dropbox folders \fImust\fR start with a forward
+slash (/).
+
+Whether the local name ends with a forward slash has particular meaning when
+copying directories. If a directory name does not end with a forward
+slash, then the directory name itself is preserved in the target folder.
+If it does end with a forward slash, then only the contents of the directory
+are copied -- the directory name does not form part of the target
+pathname. So these two operations are equivalent:
+
+.BI dbcmd\ -r\ put\ ./docs/accounts/\ /docs/acounts 
+
+and
+
+.BI dbcmd\ -r\ put\ ./docs/accounts\ /docs
+
+This
+naming follows the same semantics as \fIrsync(1)\fR.
+Unlike \fIrsync(1)\fR, however, this utility will accept file wildcard 
+characters in
+a folder expansion. Only files matching
+the pattern will be copied.
+
+In general, if an upload operation transfer multiple files, then the
+target must be a folder. However, if the target name ends with a 
+forward slash, it is assumed that the user knows that a folder is
+intended, so it will be created if it does not already exist. 
+Using an explicit forward slash this way is also a little quicker, because
+the utility does not have to ask the Dropbox server whether the
+directory exists or not.
  
-Unlike \fIrsync(1)\fR, this utility will accept file wildcard characters in
-a directory expansion (as shown in the example above). Only files matching
-the pattern will be uploaded.
 
 .SS File size limit 
 

@@ -4,22 +4,22 @@
 .\" included, that it is not sold for profit, and that this copyright notice
 .\" is retained.
 .\"
-.TH dbcmd-get 1 "March 2017"
+.TH dbcmd-get 1 "May 2017"
 .SH NAME
 Download files from Dropbox
 .SH SYNOPSIS
 .B dbcmd 
-get\ [options]\ {remote_path}\ [local_path]
+get\ [options]\ {remote_paths...}\ {local_path}
 .PP
 
 .SH DESCRIPTION
 \fIdbcmd get\fR retrieves one or more files from the Dropbox server, 
 attempting to maintain the server's folder structure in the local
-directory. The 
+directory. Each 
 \fIremote-path\fR argument can specify a single file, a folder, or
 a file pattern with wildcards. Unless a single file is specified, the
 \fI[local-path]\fR argument must denote a local directory that already
-exists. If this argument is omitted, the default is the current directory. 
+exists. It is possibile to specifiy '.', the current directory. 
 
 This command will not retrieve files which have the same SHA-256 hash as
 they have on the server -- these are deemed to be unchanged. It will never
@@ -41,36 +41,51 @@ and copy them to the local directory \fIaccounts\fR, maintaining
 the same structure.
 
 .SH "OPTIONS"
-.TP
-.BI -a,\-\-auth
-Force a re-authentication against the Dropbox server, and get a new
-authentication token. The token is stored in 
-\fI$HOME/.dbcmdr_token\rR.
-.LP
-.TP
-.BI -r,\-\-recursive
-Download folders recursively
-.LP
+
+See main manaul page.
 
 .SH NOTES
 
+.SS Dry-run operation
+
+The \fI--dry-run\fR options will show the pathnanes on the server and
+client, of the files that will be transferred, without transferring
+them. Note that this dry run can be as time-consuming as an actual
+transfer, because the file hash values still have to be computed, to
+determine whether a transfer will take place or not.
+
 .SS Directory naming 
 
-Directory names that refer to Dropbox folders \fImust\fR end in a forward
-slash (/). This is true even if the folder exists. Failing to append the
-forward slash will result in trying to fetch a single file, rather than
-the contents of a folder. 
+Directory names that refer to Dropbox folders \fImust\fR start with a forward
+slash (/).
 
-Unlike \fIrsync(1)\fR, this utility will accept file wildcard characters in
-a folder expansion (as shown in the example above). Only files matching
+Whether the remote name ends with a forward slash has particular meaning when
+copying directories. If a Dropbox folder name does not end with a forward
+slash, then the folder name itself is preserved in the target directory.
+If it does end with a forward slash, then only the contents of the folder 
+are copied -- the folder name does not form part of the target
+pathname. So these two operations are equivalent:
+
+.BI dbcmd\ -r\ get\ /docs/accounts\ ./docs 
+
+and
+
+.BI dbcmd\ -r\ get\ /docs/accounts/\ ./docs/accounts 
+
+(assuming that the local directory \fIdocs/accounts\fR exists.) This
+naming follows the same semantics as \fIrsync(1)\fR.
+Unlike \fIrsync(1)\fR, however, this utility will accept file wildcard 
+characters in
+a folder expansion. Only files matching
 the pattern will be copied.
 
 .SS File list limit
 
-There is a limit to the number of files that can be considered for 
-download using this command -- regardless of the number that are
-actually downloaded. The limit is not well-documented, but it appears
-to be over one thousand.
+Although there is no limit, apart from memory and patience, to the 
+number of files that can be downloaded in one operation, this utility
+is not designed for synchronizing an entire Dropbox account. The
+Dropbox HTTP API is not designed for speed, and the need to compute
+file hash values makes it even slower.
 
 .SS Timestamps
 

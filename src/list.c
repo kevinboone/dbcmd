@@ -209,7 +209,7 @@ BOOL list_contains_string (List *self, const char *item)
 list_remove
 IMPORTANT -- The "item" argument cannot be a direct reference to an
 item already in the list. If that items is removed from the list its
-memory will be freed. The "item" argument will this be an invalid
+memory will be freed. The "item" argument will thus be an invalid
 memory reference, and the program will crash. It is necessary
 to copy the item first.
 *==========================================================================*/

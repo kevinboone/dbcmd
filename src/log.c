@@ -58,7 +58,12 @@ void log_vprintf (const int level, const char *fmt, va_list ap)
     if (level == DEBUG) s = "DEBUG";
     else if (level == INFO) s = "INFO";
     else if (level == WARNING) s = "WARNING";
+    else if (level == TRACE) s = "TRACE";
     else s = "ERROR";
+    // I frequently put a spurious \n on the end of error messages.
+    // It's easier to fix that here than in the rest of the code ;) 
+    if (str[strlen(str) - 1] == '\n')
+      str[strlen(str) - 1] = 0;
     printf ("%s %s\n", s, str);
     free (str);
     }
@@ -127,6 +132,18 @@ void log_debug (const char *fmt,...)
   va_list ap;
   va_start (ap, fmt);
   log_vprintf (DEBUG,  fmt, ap);
+  va_end (ap);
+  }
+
+
+/*==========================================================================
+log_trace
+*==========================================================================*/
+void log_trace (const char *fmt,...)
+  {
+  va_list ap;
+  va_start (ap, fmt);
+  log_vprintf (TRACE,  fmt, ap);
   va_end (ap);
   }
 

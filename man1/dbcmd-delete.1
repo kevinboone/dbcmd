@@ -9,17 +9,30 @@
 Delete file or folder from Dropbox
 .SH SYNOPSIS
 .B dbcmd 
-delete\ [options]\ {remote_path} 
+delete\ [options]\ {remote_path_spec} 
 .PP
 
 .SH DESCRIPTION
-\fIdbcmd delete\fR deletes a file or a folder from the Dropbox server. 
+\fIdbcmd delete\fR deletes files or folders from the Dropbox server. 
 
-.SH EXAMPLE
+.SH EXAMPLES
 
 .BI dbcmd\ delete\ /docs/accounts/
 
 Delete the specified folder and all its files and subfolders
+
+.BI dbcmd\ delete\ /docs/accounts/*
+
+Delete everything (including subfolders), but not the folder itself. 
+
+.BI dbcmd\ delete\ /docs/accounts/*.txt
+
+Delete files matching '*.txt' from 'accounts', but not any of it
+subfolders. 
+
+.BI dbcmd\ delete\ --recursive\ /docs/accounts/*.txt
+
+Delete files matching '*.txt' from 'accounts', and all its subfolders. 
 
 .SH "OPTIONS"
 .TP
@@ -28,6 +41,16 @@ Force a re-authentication against the Dropbox server, and get a new
 authentication token. The token is stored in 
 \fI$HOME/.dbcmdr_token\rR.
 .LP
+.TP
+.BI -r,\-\-recursive
+Expand folders when searching for file matches.
+.LP
+.TP
+.BI -y,\-\-yes
+Do not prompt -- just delete without confirmation.
+.LP
+
+
 
 .SH NOTES
 
@@ -35,12 +58,15 @@ authentication token. The token is stored in
 
 Caution should be exercised when running this command on a folder, as it will
 delete the folder and everything underneath it, without much warning.
+This is the standard behaviour of Dropbox, and the only way to avoid it
+is to specify a particular file pattern to delete.
 
-.SS Wildcards are not supported
+.SS Wildcards will not match folders 
 
-Unlike the \fIget\fR and \fIput\fR commands, the \fIdelete\fR command does
-not support wildcards; it is not possible, for example, to delete all the files
-matching a specific pattern from a folder. 
+Wildcards (*, ?) will not match folder names, because the risk of
+accidental full deletion (see above) is too high. So a file pattern
+can only be used to delete files. To delete a folder (and its contents),
+specify the full folder name. 
 
 .SS Authentication
 

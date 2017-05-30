@@ -10,217 +10,387 @@ GPL v3.0
 #include <string.h>
 #include <errno.h>
 #include <libgen.h>
+#include <time.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <dirent.h>
+#include <stdlib.h>
+#include <unistd.h>
 #include <fnmatch.h>
 #include "cJSON.h"
-#include "curl.h"
 #include "dropbox.h"
 #include "token.h"
 #include "commands.h"
 #include "log.h"
-#include "utils.h"
-#include "list.h"
+#include "errmsg.h"
+
+
+/*==========================================================================
+private struct
+*==========================================================================*/
+typedef struct _Counters
+  {
+  int total_items;
+  int get_info_failed;
+  int skip_unchanged;
+  int download_failed;
+  int downloaded;
+  } Counters;
+
+
+/*==========================================================================
+Forward
+*==========================================================================*/
+static void cmd_get_make_directory (const char *_filename);
+
+
+/*==========================================================================
+cmd_get_consider_and_download
+*==========================================================================*/
+static void cmd_get_consider_and_download (const char *token, 
+    const CmdContext *context, 
+    const char *source, const char *target, 
+    Counters *counters)
+  {
+  BOOL dry_run = context->dry_run;
+
+  counters->total_items++;
+
+  log_debug ("Considering downloading %s to %s", source, target);
+
+  BOOL doit = FALSE;
+
+  // The local file need not exist, so we must create it. If it does
+  //  exist, we need to check its hash against that of the server file
+
+  if (access (target, R_OK) == 0)
+    {
+    // Local exists -- check hashes
+    char *error = NULL;
+    DBStat *stat = dropbox_stat_create();
+    dropbox_get_file_info (token, source, stat, &error);
+    if (error)
+      {
+      // Should never happen, unless someone pulls the plug mid-operation
+      log_error (error);
+      counters->get_info_failed++;
+      free (error);
+      }
+    else
+      {
+      const char *remote_hash = dropbox_stat_get_hash (stat);
+      char local_hash [DBHASH_LENGTH];
+      dropbox_hash (target, local_hash, &error); // We ignore error here
+      if (strcmp (local_hash, remote_hash) == 0)
+        {
+        log_info ("Not downloading unchanged file '%s'", source);
+        counters->skip_unchanged++;
+        doit = FALSE;
+        }
+      else
+        {
+        log_info ("Downloading updated file '%s'", source);
+        doit = TRUE;
+        }
+      }
+     dropbox_stat_destroy (stat);
+     }
+  else
+    {
+    doit = TRUE;
+    log_info ("Downloading '%s' because local file does not exist", source);
+    }
+
+
+  if (doit)
+    {
+    if (dry_run)
+      {
+      printf ("Source: %s\n", source);
+      printf ("Destination: %s\n\n", target);
+      }
+    else
+      {
+      char *error = NULL;
+      cmd_get_make_directory (target);
+      dropbox_download (token, source, target, &error); 
+      if (error)
+        {
+        log_error (error);
+        free (error);
+        counters->download_failed++;
+        }
+      else
+        {
+        counters->downloaded++;
+        }
+      }
+    }
+  }
+
+
+/*==========================================================================
+cmd_get_one_remote_spec
+*==========================================================================*/
+static void cmd_get_one_remote_spec (const char *token, 
+    const CmdContext *context, const char *_remote, 
+    const char *_local, Counters *counters, BOOL local_is_dir)
+  {
+  BOOL recursive = context->recursive;
+
+  char *error = NULL;
+  char *remote = strdup (_remote);
+  char *path;
+
+  BOOL remote_ended_slash = FALSE;
+  if (remote[strlen(remote) - 1] == '/')
+    {
+    remote_ended_slash = TRUE; 
+    remote[strlen(remote) - 1] = 0;
+    }
+
+  char *local = strdup (_local);
+  if (local_is_dir)
+    {
+    if (local[strlen(local) - 1] == '/')
+      local[strlen(local) - 1] = 0;
+    }
+
+  DBStat *stat = dropbox_stat_create();
+  dropbox_get_file_info (token, remote, 
+    stat, &error);
+
+  if (error)
+    {
+    log_error ("%s: %s: %s", NAME, "get", error);
+    free (error);
+    } 
+  else
+    {
+    // How much of the start of the server's path to strip, to
+    //  create a relative pathname on the client
+    int prefix_len;
+
+    char *spec = NULL;
+    if (dropbox_stat_get_type (stat) == DBSTAT_FOLDER)
+      {
+      path = strdup (remote);
+
+      char *pathcopy = strdup (path);
+      char *p = strrchr (pathcopy, '/');
+      *p = 0;
+      // I'm not at all sure about this. We can't recurse manually on
+      //   the server -- only collect a list of matching files. So we
+      //   can't build a list that either does, or does not, include the
+      //   directory name, as we can when recursing on the client. All we
+      //   can do is try to simulate the semantics of rsync by removing
+      //   a certain amount of the full pathname, that amount to be decided
+      //   by whether the remote path ended in a / or not. Ugh :/
+      if (remote_ended_slash)
+        prefix_len = strlen (path); 
+      else
+        prefix_len = strlen (pathcopy); 
+      free (pathcopy);
+      }
+    else if (dropbox_stat_get_type (stat) == DBSTAT_FILE)
+      {
+      // In principle, we don't even need to proceed to listing
+      //  files on the server, since we have identified this as
+      //  a single file. However, when we add include/exclude
+      //  processing later, it will be easier if we use the same logic
+      char *p = strrchr (remote, '/');
+      if (p)
+        {
+        *p = 0; // Is this safe? Do we use it later?
+        spec = strdup (p+1);
+        path = strdup (remote);
+        }
+      else
+        {
+        // This should never happen, as we check before entry
+        //   that paths start with /. 
+        log_error ("Internal error -- remote path has no /");
+        }
+      prefix_len = strlen (path);
+      }
+    else
+      {
+      char *p = strrchr (remote, '/');
+      if (p)
+        {
+        *p = 0; // Is this safe? Do we use it later?
+        spec = strdup (p+1);
+        path = strdup (remote);
+        }
+      else
+        {
+        // This should never happen, as we check before entry
+        //   that paths start with /. 
+        log_error ("Internal error -- remote path has no /");
+        }
+      prefix_len = strlen (path);
+      }
+
+    if (spec == NULL)
+      spec = strdup ("*");
+
+    log_debug ("path=%s, spec=%s", path, spec);
+
+    List *list = dropbox_stat_create_list();
+    dropbox_list_files (token, path, list, FALSE, recursive, &error);
+
+    if (error)
+      {
+      log_error ("%s: %s: %s", NAME, "get", error);
+      free (error);
+      } 
+    else
+      {
+      List *globbed_list = list_create (free);
+       
+      int i, l = list_length (list);
+      for (i = 0; i < l; i++)
+	{
+	const DBStat *stat = list_get (list, i);
+	const char *path = dropbox_stat_get_path (stat); 
+        char *pathcopy = strdup (path);
+        char *filename = basename (pathcopy);
+        // Not sure about this logic
+        if ((fnmatch (spec, path, 0) == 0)
+          || (fnmatch (spec, filename, 0) == 0))
+          list_append (globbed_list, strdup (path)); 
+        // TODO include/exclude here
+        free (pathcopy);
+	} 
+      
+      l = list_length (globbed_list);
+      if (l > 1 && !local_is_dir)
+        {
+        log_error ("%s: %s: %s", NAME, "get", 
+          "Multiple files can only be downloaded into an existing directory");
+        }
+      else if (l == 0)
+        {
+        log_warning ("%s: %s: %s", NAME, "get", 
+          "No files selected for download");
+        }
+      else
+        {
+	for (i = 0; i < l; i++)
+	  {
+	  const char *remote_path = list_get (globbed_list, i);
+	  const char *relative = remote_path + prefix_len;
+          char *full_local;
+          if (local_is_dir)
+            {
+            asprintf (&full_local, "%s%s", local, relative); 
+            }
+          else
+            full_local = strdup (local);
+          cmd_get_consider_and_download (token, context, remote_path, 
+            full_local, counters);
+	  } 
+        }
+      list_destroy (globbed_list);
+      }
+
+    free (path);
+    free (remote);
+    free (local);
+    free (spec);
+    list_destroy (list);
+    dropbox_stat_destroy (stat);
+    } 
+  OUT
+  }
+
 
 /*==========================================================================
 cmd_get
 *==========================================================================*/
 int cmd_get (const CmdContext *context, int argc, char **argv)
   {
+  IN
   int ret = 0;
-  char *error = NULL;
-  char *remote_spec = NULL;
-  char *remote_path = NULL;
-  char *local_path = NULL;
-  char *pattern = NULL;
-
-  //BOOL force = context->force;
-  BOOL recursive = context->recursive;
 
   log_debug ("Starting get command");
 
-  if (argc == 2 || argc == 3)
+  if (argc < 3)
     {
-    if (argc == 2)
-      {
-      remote_spec = strdup (argv[1]);
-      local_path = strdup (".");
-      }
-    else
-      {
-      remote_spec = strdup (argv[1]);
-      local_path = strdup (argv[2]);
-      }
+    log_error ("%s: %s: this command takes two or more arguments\n",
+      NAME, argv[0]);
+    OUT
+    return EINVAL;
+    }
 
-    if (strlen (remote_spec) == 0) 
-      {
-      log_error ("%s: zero-length remote path argument: use / for root folder", argv[0]); 
-      return EINVAL;
-      }
+  char *dest_spec = strdup (argv [argc - 1]);
+  log_debug ("dest_spec is %s", dest_spec);
 
-    if (remote_spec[0] != '/') 
-      {
-      log_error ("%s: remote path must begin with /", argv[0]); 
-      return EINVAL;
-      }
+  BOOL local_is_dir = FALSE;
 
-    if (remote_spec [strlen (remote_spec) - 1] == '/')
-      {
-      char *new_remote_spec = malloc (strlen (remote_spec) + 5);
-      strcpy (new_remote_spec, remote_spec);
-      strcat (new_remote_spec, "*");
-      free (remote_spec);
-      remote_spec = new_remote_spec;
-      }
-
-    pattern = strdup (basename (remote_spec));
-    char *_remote_path = dirname (remote_spec);
-    remote_path = malloc (strlen (_remote_path) + 3);
-    strcpy (remote_path, _remote_path);
-    if (remote_path[strlen(remote_path) - 1] != '/')
-      strcat (remote_path, "/"); 
-
-    BOOL proceed = TRUE;
-    BOOL local_is_dir = FALSE;
-
-    if (utils_is_directory (local_path))
+  struct stat sb;
+  if (stat (dest_spec, &sb) == 0)
+    {
+    if (S_ISDIR (sb.st_mode))
       {
       local_is_dir = TRUE;
       }
+    }
+
+   if (TRUE)
+    {
+    // This is not sufficient -- we need to expand the file list, not
+    //  just count the number of arguments. If an argument contains 
+    //  multiple files, it will still need the target to be a folder
+    if (argc > 3 && !local_is_dir)
+      {
+      log_error ("%s: %s: if multiple source files are specified, the target argument must refer to a pre-existing directory\n", NAME, argv[0]); 
+      }
     else
       {
-      if (utils_contains_wildcards (pattern))
-        {
-        log_error 
-          ("%s: if wildcards are specified, or the source is a directory, the target argument must be an existing directory\n",
-          argv[0]);
-        ret = EINVAL;
-        proceed = FALSE;
-        } 
-      }
+      if (dest_spec[strlen(dest_spec) - 1] == '/')
+        dest_spec[strlen(dest_spec) - 1] = 0;
 
-    if (proceed)
-      {
+      char *error = NULL;
       char *token = token_init (&error);
-       if (token)
+      if (token)
 	{
-        List *list = list_create (dbstat_free);
-        dropbox_get_file_list (token, remote_path, recursive, FALSE, list, &error); 
-        if (error)
-          {
-	  log_error ("%s: Can't get file list from server: %s \n", 
-	    argv[0], error);
-	  free (error);
-	  ret = EBADRQC;
-          }
-        else
-          {
-          int i, l = list_length (list);
-          int matching = 0;
-          int skip_error = 0;
-          int skip_unchanged = 0;
-          int copy_fail = 0;
-          int copy_success = 0;
-          log_debug ("Server returned %d file(s) in directory", l);
-          for (i = 0; i < l; i++)
+	Counters *counters = malloc (sizeof (Counters));
+	memset (counters, 0, sizeof (Counters));
+
+	int i;
+	for (i = 1; i < argc - 1; i++)
+	  {
+          if (argv[i][0] == '/')
             {
-            const DBStat *stat = list_get (list, i);
-            char *path = strdup (stat->path);
-            char *filename = basename (path);
-            if (fnmatch (pattern, filename, 0) == 0)
-              {
-              // Get the local relative path by removing the remote dir part
-              //   from the remote full path
-              char *local_rel_path = strdup (stat->path + strlen (remote_path));
-              char *full_local_path;
-              if (local_is_dir)
-                {
-                full_local_path = malloc (strlen (local_path) + strlen (local_rel_path) + 4); 
-                strcpy (full_local_path, local_path);
-                if (full_local_path[strlen (full_local_path) - 1] != '/')
-                  strcat (full_local_path, "/");
-                strcat (full_local_path, local_rel_path); 
-                }
-              else
-                full_local_path = strdup (local_path);
-
-              log_info ("Remote file: %s, local file: %s", path, full_local_path);
-
-              matching++;         
-              
-              char *error = NULL;
-              DBCompRes res;
-              dropbox_compare_files (token, full_local_path, path, &res, &error);
-              if (error)
-                {
-                log_error ("Can't compare file details: %s", error);
-                free (error); 
-                skip_error++; 
-                }
-              else
-                {
-                // We managed to get local and remote file details --
-                //  now check whether they mean we need to copy
-                BOOL copy = FALSE;
-                if (res.local_file_exists)
-                  {
-                  if (res.local_time < res.remote_time)
-                    {
-                    log_info ("File contents differ -- will download");
-                    copy = TRUE;
-                    }
-                  else
-                    {
-                    //if (force)
-                    //  {
-                    //  log_info ("Download forced, even though local file is up to date");
-                    //  copy = TRUE;
-                    //  }
-                    //else
-                      {
-                      log_info ("Files have the same contents -- will not download");
-                      skip_unchanged++;
-                      }
-                    }
-                  }
-                else
-                  {
-                  log_info ("Will download, as local file does not exist");
-                  copy = TRUE;
-                  }
-
-                if (copy)
-                  {
-                  utils_make_directory (full_local_path);
-                  char *error = NULL;
-                  log_info ("Downloading %s", path);
-                  dropbox_download_file (token, path, full_local_path, &error); 
-                  if (error)
-                    {
-                    log_error ("Can't download file: %s\n", error);
-                    free (error);
-                    copy_fail++;
-                    }
-                  else
-                    copy_success++;
-                  }
-
-                }
-             
-
-              free (full_local_path);
-              free (local_rel_path);
-              }
-            free (path);
+	    cmd_get_one_remote_spec 
+              (token, context, argv[i], dest_spec, counters, local_is_dir);
             }
-          log_info ("%d file(s) matched pattern '%s'", matching, pattern);
-          log_info ("%d file(s) skipped because of error", skip_error);
-          log_info ("%d file(s) skipped because cotents are identical", skip_unchanged);
-          log_info ("%d file(s) could not be copied", copy_fail);
-          log_info ("%d file(s) copied", copy_success); 
-          }
-        list_destroy (list);
+          else
+            {
+            log_error ("%s: %s: %s\n", 
+              NAME, argv[0], ERROR_STARTSLASH); 
+            }
+	  }
+   
+	printf ("Files considered: %d\n", counters->total_items);
+	printf ("Downloaded: %d\n", counters->downloaded); 
+	if (counters->skip_unchanged > 0)
+	  printf ("Skipped because unchanged: %d\n", counters->skip_unchanged); 
+	int total_errors = counters->get_info_failed
+	   + counters->download_failed;
+	if (total_errors > 0)
+	  {
+	  printf ("Errors: %d\n", total_errors); 
+	  printf ("  Could not get remote file metadata: %d\n", 
+	   counters->get_info_failed); 
+	  printf ("  Download failed: %d\n", 
+	   counters->download_failed); 
+	  }
+	free (counters);
         free (token);
         }
-     else
+      else
         {
 	log_error ("%s: Can't initialize access token: %s", 
 	  argv[0], error);
@@ -229,23 +399,26 @@ int cmd_get (const CmdContext *context, int argc, char **argv)
         }
       }
     }
-  else
-    {
-    log_error ("Usage: %s {remote_path} [local_path]", argv[0]); 
-    ret = EINVAL;
-    }
 
-  if (remote_path) free (remote_path);
-  if (remote_spec) free (remote_spec);
-  if (local_path) free (local_path);
-  if (pattern) free (pattern);
-
+  OUT
   return ret;
   }
 
-
-
-
-
-
+/*==========================================================================
+cmd_get_make_directory
+Make the directory for the specified file, including parents, if possible
+There is no error return -- we'll find out whether the operation succeeded
+when we try to use the directory
+*==========================================================================*/
+static void cmd_get_make_directory (const char *_filename)
+  {
+  char *filename = strdup (_filename);
+  char *dir = dirname (filename);
+  log_debug ("Ensuring directory %s exists", dir);
+  char *cmd = NULL;
+  asprintf (&cmd, "mkdir -p \"%s\"", dir);
+  system (cmd);
+  free (cmd);
+  free (filename);
+  }
 

@@ -12,11 +12,11 @@ GPL v3.0
 #include <time.h>
 #include <unistd.h>
 #include "cJSON.h"
-#include "curl.h"
 #include "dropbox.h"
 #include "token.h"
 #include "commands.h"
 #include "log.h"
+#include "errmsg.h"
 
 /*==========================================================================
 make_display_time
@@ -278,8 +278,8 @@ int cmd_list (const CmdContext *context, int argc, char **argv)
     char *token = token_init (&error);
     if (token)
       {
-      List *list = list_create (dbstat_free);
-      dropbox_get_file_list (token, path, recursive, TRUE, list, &error);
+      List *list = dropbox_stat_create_list();
+      dropbox_list_files (token, path, list, TRUE, recursive, &error);
 
       if (error)
 	{
@@ -308,7 +308,8 @@ int cmd_list (const CmdContext *context, int argc, char **argv)
     }
   else
     {
-    log_error ("%s: path must start with '/'", argv[0]); 
+    log_error ("%s: %s: %s", 
+      NAME, argv[0], ERROR_STARTSLASH); 
     ret = EINVAL;
     }
 
