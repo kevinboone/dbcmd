@@ -27,4 +27,5 @@ int cmd_list (const CmdContext *context, int argc, char **argv);
 int cmd_put (const CmdContext *context, int argc, char **argv);
 int cmd_get (const CmdContext *context, int argc, char **argv);
 int cmd_newfolder (const CmdContext *context, int argc, char **argv);
+int cmd_usage (const CmdContext *context, int argc, char **argv);
 

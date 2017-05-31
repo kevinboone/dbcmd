@@ -36,8 +36,8 @@ int cmd_move (const CmdContext *context, int argc, char **argv)
 
   if (argc != 3)
     {
-    log_error ("%s: this command takes two arguments\n",
-      argv[0]);
+    log_error ("%s: %s: this command takes two arguments\n",
+      ERROR_USAGE, argv[0]);
     OUT
     return EINVAL;
     }
@@ -67,7 +67,7 @@ int cmd_move (const CmdContext *context, int argc, char **argv)
       dropbox_move (token, from, to, &error); 
       if (error)
 	{
-	log_error ("%s: %s: %s\n", argv[0], ERROR_MOVE, error);
+	log_error ("%s: %s: %s", argv[0], ERROR_MOVE, error);
 	free (error);
 	ret = EINVAL;
 	}

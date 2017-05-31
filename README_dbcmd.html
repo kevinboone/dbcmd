@@ -186,9 +186,6 @@ could just check timestamps.
 
 <h2>Bugs and limitations</h2>
 
-The largest file that can be uploaded to the Dropbox server is
-<b>150Mb</b>. This is a limitation of the Dropbox HTTP API.
-<p/>
 There is no limit -- other than time and memory -- on the number of files 
 that can be listed, searched, or copied in one 
 operation. However, since most operations first 
@@ -196,6 +193,13 @@ require building a list of files held on the server and the local
 filesystem, and their hash values, and because Dropbox delivers its file
 lists relatively slowly, it is impractical to work on huge sets of
 files.
+<p/>
+There is additionally no limit on the size of a file that can be uploaded
+or downloaded. However, Dropbox is not really designed for handling
+huge files, and these operations are slow, and can use a great deal
+of memory. For the record, uploads are performed in 4B blocks. 
+Increasing this can improve speed a little, but at the expense of
+increased memory usage.
 <p/>
 The file containing the stored authorization token is not encrypted. It could
 be encrypted, but this would require asking the user for a decryption key or
@@ -229,6 +233,28 @@ the general case, without repeating file scans on the server, which can
 be very time-consuming. If in doubt, as always, use <code>--dry-run</code>
 to check which files will be written.
 <p/>
+Using recursive mode (with <code>put</code>, <code>get</code>, and
+<code>list</code>) can have unexpected results when the remote
+path is not a directory. 
+The reason for this is that file wildcards cannot be matched on the server 
+-- the
+entire, relevant directory tree has to be copied to the client first. 
+The wildcard match is then done on the client. In recursive mode,
+all files in the specified folder <i>and all subfolders</i> are 
+searched on the client. If you run, for example,
+<code>dbcmd list --recursive /foo.bar</code>, then the name 
+<code>foo.bar</code> will be matched against every file on the server --
+after transferring the complete file list to the client. More
+useful, perhaps, is <code>dbcmd list --recursive /media/*.mp3</code>,
+meaning "list every .mp3 file in every folder under <code>/media</code>. 
+However,
+even if this is potentially useful, even if it works it will
+probably be slow and use a great deal of memory. 
+<p/>
+The Dropbox server is much more fussy than most Linux utilities are,
+about file and folder paths. In particular, multiple forward-slashes
+in a path name are treated as erroneous. 
+
 
 <h2>Legal, etc</h2>
 

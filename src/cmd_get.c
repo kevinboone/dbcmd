@@ -50,7 +50,7 @@ cmd_get_consider_and_download
 static void cmd_get_consider_and_download (const char *token, 
     const CmdContext *context, 
     const char *source, const char *target, 
-    Counters *counters)
+    Counters *counters, const char *argv0)
   {
   BOOL dry_run = context->dry_run;
 
@@ -72,7 +72,7 @@ static void cmd_get_consider_and_download (const char *token,
     if (error)
       {
       // Should never happen, unless someone pulls the plug mid-operation
-      log_error (error);
+      log_error ("%s: %s: %s", argv0, ERROR_CANTINFOSERVER, error);
       counters->get_info_failed++;
       free (error);
       }
@@ -116,7 +116,7 @@ static void cmd_get_consider_and_download (const char *token,
       dropbox_download (token, source, target, &error); 
       if (error)
         {
-        log_error (error);
+        log_error ("%s: %s: %s", argv0, ERROR_DOWNLOAD, error);
         free (error);
         counters->download_failed++;
         }
@@ -134,7 +134,8 @@ cmd_get_one_remote_spec
 *==========================================================================*/
 static void cmd_get_one_remote_spec (const char *token, 
     const CmdContext *context, const char *_remote, 
-    const char *_local, Counters *counters, BOOL local_is_dir)
+    const char *_local, Counters *counters, BOOL local_is_dir, 
+    const char *argv0)
   {
   BOOL recursive = context->recursive;
 
@@ -289,7 +290,7 @@ static void cmd_get_one_remote_spec (const char *token,
           else
             full_local = strdup (local);
           cmd_get_consider_and_download (token, context, remote_path, 
-            full_local, counters);
+            full_local, counters, argv0);
 	  } 
         }
       list_destroy (globbed_list);
@@ -318,8 +319,8 @@ int cmd_get (const CmdContext *context, int argc, char **argv)
 
   if (argc < 3)
     {
-    log_error ("%s: this command takes two or more arguments\n",
-      argv[0]);
+    log_error ("%s: %s: this command takes two or more arguments\n",
+      argv[0], ERROR_USAGE);
     OUT
     return EINVAL;
     }
@@ -365,7 +366,8 @@ int cmd_get (const CmdContext *context, int argc, char **argv)
           if (argv[i][0] == '/')
             {
 	    cmd_get_one_remote_spec 
-              (token, context, argv[i], dest_spec, counters, local_is_dir);
+              (token, context, argv[i], dest_spec, counters, 
+                local_is_dir, argv[0]);
             }
           else
             {

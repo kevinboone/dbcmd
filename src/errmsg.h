@@ -16,4 +16,9 @@ GPL v3.0
 #define ERROR_CREATEFOLDER "Can't create folder on server"
 #define ERROR_GETTOKEN "Can't get access token from server"
 #define ERROR_LOCALHASH "Can't determine hash value of local file"
+#define ERROR_USAGE "Incorrect command-line usage"
+#define ERROR_DOWNLOAD "Can't download from server"
+#define ERROR_UPLOAD "Can't upload to server"
+#define ERROR_CANTUSAGE "Can't get usage information from server"
+
 

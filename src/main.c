@@ -67,6 +67,8 @@ CmdTableEntry cmd_table[] =
      "create new folder(s) on the server", NULL},
   {"put",  cmd_put, "{local_paths...} {remote_path}", "upload files to server", 
      NULL},
+  {"usage",  cmd_usage, "", "show server quota and usage", 
+     NULL},
   {NULL, NULL}
   };
 

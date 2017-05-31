@@ -1121,7 +1121,7 @@ void dropbox_upload (const char *token, const char *source,
   //int length = (int) sb.st_size;
 
   FILE *f = fopen (source, "r");
-  int buffsize = 1024*1024*4; // TODO
+  int buffsize = 1024*1024*4; // TODO -- make configurable?
   log_debug ("Upload blocksize is %d", buffsize);
   if (f)
     {
@@ -1207,6 +1207,93 @@ void dropbox_upload (const char *token, const char *source,
     }
   OUT
   }
+
+
+/*---------------------------------------------------------------------------
+dropbox_get_usage
+---------------------------------------------------------------------------*/
+void dropbox_get_usage (const char *token, int64_t *quota, 
+           int64_t *usage, char **error)
+  {
+  *quota = 0;
+  *usage = 0;
+  CURL* curl = curl_easy_init();
+  if (curl)
+    {
+    struct DBWriteStruct response;
+    response.memory = malloc(1);  
+    response.size = 0;    
+   
+    struct curl_slist *headers = NULL;
+
+    curl_easy_setopt (curl, CURLOPT_POST, 1);
+
+    char *auth_header;
+    asprintf (&auth_header, "Authorization: Bearer %s", token);
+    headers = curl_slist_append (headers, auth_header);
+    // Must send an empty content-type here, else DB expects some data
+    //   that actually matches the content type, and no data is expected
+    //   with this API call
+    headers = curl_slist_append (headers, "Content-Type: ");
+
+    curl_easy_setopt (curl, CURLOPT_URL, 
+	"https://api.dropboxapi.com/2/users/get_space_usage");
+
+    char curl_error [CURL_ERROR_SIZE];
+    curl_easy_setopt (curl, CURLOPT_ERRORBUFFER, curl_error);
+    curl_easy_setopt (curl, CURLOPT_WRITEFUNCTION, dropbox_write_callback);
+    curl_easy_setopt (curl, CURLOPT_WRITEDATA, &response);
+    curl_easy_setopt (curl, CURLOPT_HTTPHEADER, headers);
+    curl_easy_setopt (curl, CURLOPT_POSTFIELDS, "");
+
+    CURLcode curl_code = curl_easy_perform (curl);
+    if (curl_code == 0)
+      {
+      const char *text = response.memory;
+      cJSON *root = cJSON_Parse (text); 
+      if (root)
+	{
+	cJSON *j_used  = cJSON_GetObjectItem (root, "used");
+	if (j_used)
+	  {
+          *usage = (int64_t) j_used->valuedouble;
+
+	  cJSON *j_allocation  = cJSON_GetObjectItem (root, "allocation");
+	  if (j_allocation)
+            {
+	    cJSON *j_allocated  = cJSON_GetObjectItem (j_allocation, 
+               "allocated");
+            if (j_allocation)
+              {
+              *quota = (int64_t) j_allocated->valuedouble;
+              }
+            }
+          }
+         else
+          {
+          dropbox_check_response_for_error (text, error);
+          }
+        cJSON_Delete (root);
+        }
+      else
+        dropbox_check_response_for_error (text, error);
+      }
+    else
+      {
+      *error = strdup (curl_error); 
+      }
+
+    free (response.memory);
+    curl_slist_free_all (headers); 
+    free (auth_header);
+    curl_easy_cleanup (curl);
+    }
+  else
+    {
+    *error = strdup (EASY_INIT_FAIL); 
+    }
+  }
+
 
 
 /*---------------------------------------------------------------------------

@@ -47,7 +47,7 @@ int cmd_info (const CmdContext *context, int argc, char **argv)
 
 	if (error)
 	  {
-	  log_error ("%s: %s", argv[0], error);
+	  log_error ("%s: %s: %s", argv[0], ERROR_CANTINFOSERVER, error);
 	  free (error);
 	  ret = -1; // TODO
 	  } 
@@ -116,7 +116,8 @@ int cmd_info (const CmdContext *context, int argc, char **argv)
     }
   else
     {
-    log_error ("Usage: %s {remote_path}", argv[0]); 
+    log_error ("%s: %s: Usage: %s {remote_path}", argv[0], ERROR_USAGE, 
+       argv[0]); 
     ret = EINVAL;
     }
 

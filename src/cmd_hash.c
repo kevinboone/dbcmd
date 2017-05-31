@@ -36,8 +36,8 @@ int cmd_hash (const CmdContext *context, int argc, char **argv)
 
   if (argc < 2)
     {
-    log_error ("%s: this command takes one or more arguments\n",
-      argv[0]);
+    log_error ("%s: %s: this command takes one or more arguments\n",
+      argv[0], ERROR_USAGE);
     OUT
     return EINVAL;
     }

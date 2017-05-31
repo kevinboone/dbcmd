@@ -223,8 +223,8 @@ int cmd_delete (const CmdContext *context, int argc, char **argv)
 
   if (argc != 2)
     {
-    log_error ("%s: this command takes one argument\n",
-      argv[0]);
+    log_error ("%s: %s: this command takes one argument\n",
+      ERROR_USAGE, argv[0]);
     OUT
     return EINVAL;
     }
@@ -254,7 +254,7 @@ int cmd_delete (const CmdContext *context, int argc, char **argv)
       // Note that "not found" is not an error -- it is a successful
       //   call on the server, which reports a valid state. An error
       //   here will be unable to connect, etc.
-      log_error (error);
+      log_error ("%s: %s: %s", argv[0], ERROR_CANTINFOSERVER, error);
       free (error);
       }
     else

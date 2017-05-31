@@ -18,4 +18,5 @@ Complete re-implementation, with the following improvements:
 * Implemented large file upload, using block transfers
 * Implemented wildcard search for 'list' command
 * Tidied up error reporting
+* Implemented "usage" command
 

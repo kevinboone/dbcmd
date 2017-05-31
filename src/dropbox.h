@@ -13,6 +13,8 @@ GPL v3.0
 
 void dropbox_move (const char *token, const char *old_path, 
            const char *new_path, char **error);
+void dropbox_get_usage (const char *token, int64_t *quota, 
+           int64_t *usage, char **error);
 void dropbox_newfolder (const char *token, const char *new_path,
            char **error);
 void dropbox_delete (const char *token, const char *path, 

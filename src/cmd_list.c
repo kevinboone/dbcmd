@@ -291,8 +291,8 @@ int cmd_list (const CmdContext *context, int argc, char **argv)
       dropbox_get_file_info (token, path, stat, &error);
       if (error)
         {
-        log_error ("%s: Can't get remote file metadata: %s", 
-          argv[0], error);
+        log_error ("%s: %s: %s", 
+          argv[0], ERROR_CANTINFOSERVER, error);
         free (error);
         ret = EBADRQC;
         }
@@ -331,7 +331,7 @@ int cmd_list (const CmdContext *context, int argc, char **argv)
 
 	if (error)
 	  {
-	  log_error ("%s: %s", argv[0], error);
+	  log_error ("%s: %s: %s", argv[0], ERROR_CANTLISTSERVER, error);
 	  free (error);
 	  ret = -1;
 	  } 

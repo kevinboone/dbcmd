@@ -48,7 +48,7 @@ cmd_put_consider_and_upload
 static void cmd_put_consider_and_upload (const char *token, 
     const CmdContext *context, 
     const char *source, const char *target, 
-    Counters *counters)
+    Counters *counters, const char *argv0)
   {
   BOOL dry_run = context->dry_run;
 
@@ -63,7 +63,7 @@ static void cmd_put_consider_and_upload (const char *token,
   dropbox_get_file_info (token, target, stat, &error);
   if (error)
     {
-    log_error (error);
+    log_error ("%s: %s: %s", argv0, ERROR_CANTINFOSERVER, error);
     counters->get_info_failed++;
     free (error);
     }
@@ -76,7 +76,7 @@ static void cmd_put_consider_and_upload (const char *token,
       dropbox_hash (source, local_hash, &error); 
       if (error)
         {
-        log_error (error);
+        log_error ("%s: %s: %s", argv0, ERROR_LOCALHASH, error);
         free (error);
         counters->read_local_failed++;
         }
@@ -119,7 +119,7 @@ static void cmd_put_consider_and_upload (const char *token,
       dropbox_upload (token, source, target, &error); 
       if (error)
         {
-        log_error (error);
+        log_error ("%s: %s: %s", argv0, ERROR_UPLOAD, error);
         free (error);
         counters->upload_failed++;
         }
@@ -137,7 +137,7 @@ put_one_item
 *==========================================================================*/
 static void put_one_item (const char *token, const CmdContext *context, 
     const char *_base, const char *_relative, const char *remote, 
-    Counters *counters, BOOL remote_is_dir)
+    Counters *counters, BOOL remote_is_dir, const char *argv0)
   {
   IN
 
@@ -176,7 +176,7 @@ static void put_one_item (const char *token, const CmdContext *context,
 	  asprintf (&fullremote, "%s", remote);
 
 	cmd_put_consider_and_upload (token, context, full_local, fullremote,
-	  counters);
+	  counters, argv0);
 
 	free (fullremote);
       //  }
@@ -217,7 +217,7 @@ static void put_one_item (const char *token, const CmdContext *context,
               }
 
             put_one_item (token, context, base, newrel, remote, counters, 
-              remote_is_dir);
+              remote_is_dir, argv0);
 
             free (newrel);
             }
@@ -266,11 +266,12 @@ cmd_put_one_local_spec
 static void cmd_put_one_local_spec (const char *token, 
     const CmdContext *context, 
     const char *local, const char *remote, Counters *counters, 
-    BOOL remote_is_dir)
+    BOOL remote_is_dir, const char *argv0)
   {
   if (local[strlen(local) - 1] == '/')
     {
-    put_one_item (token, context, local, ".", remote, counters, remote_is_dir);
+    put_one_item (token, context, local, ".", remote, counters, remote_is_dir,
+       argv0);
     }
   else
     {
@@ -280,7 +281,7 @@ static void cmd_put_one_local_spec (const char *token,
     char *filename = basename (_local);
     char *dir = dirname (__local);
     put_one_item (token, context, dir, filename, remote, counters, 
-      remote_is_dir);
+      remote_is_dir, argv0);
     free (_local);
     free (__local);
     free (abspath);
@@ -361,7 +362,7 @@ int cmd_put (const CmdContext *context, int argc, char **argv)
       for (i = 1; i < argc - 1; i++)
 	{
 	cmd_put_one_local_spec (token, context, argv[i], dest_spec, counters, 
-          remote_is_dir);
+          remote_is_dir, argv[0]);
 	}
  
       printf ("Files considered: %d\n", counters->total_items);
