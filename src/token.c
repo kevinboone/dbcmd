@@ -14,6 +14,7 @@ GPL v3.0
 #include "auth.h"
 #include "token.h"
 #include "dropbox.h"
+#include "errmsg.h"
 
 #define FILENAME ".dbcmd_token"
 
@@ -60,7 +61,7 @@ char *token_prompt (void)
   ret = dropbox_get_token (s, &error);
   if (error)
     {
-    fprintf (stderr, "Can't create access token: %s\n", error);
+    fprintf (stderr, "%s: %s\n", ERROR_GETTOKEN, error);
     free (error);
     }
 

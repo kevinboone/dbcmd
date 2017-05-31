@@ -35,8 +35,8 @@ int cmd_newfolder (const CmdContext *context, int argc, char **argv)
 
   if (argc < 2)
     {
-    log_error ("%s: %s: this command takes one or more arguments\n",
-      NAME, argv[0]);
+    log_error ("%s: this command takes one or more arguments\n",
+      argv[0]);
     OUT
     return EINVAL;
     }
@@ -57,14 +57,14 @@ int cmd_newfolder (const CmdContext *context, int argc, char **argv)
         dropbox_newfolder (token, folder, &error); 
         if (error)
           {
-          log_error ("%s: %s: %s\n", NAME, argv[0], error);
+          log_error ("%s: %s: %s\n", argv[0], ERROR_CREATEFOLDER, error);
           free (error);
           ret = EINVAL;
           }
         }
       else
         {
-        log_error ("%s: %s: %s\n", NAME, argv[0],  
+        log_error ("%s: %s\n", argv[0],  
           ERROR_STARTSLASH);
         free (error);
         }
@@ -74,8 +74,8 @@ int cmd_newfolder (const CmdContext *context, int argc, char **argv)
     }
   else
     {
-    log_error ("%s: Can't initialize access token: %s", 
-      argv[0], error);
+    log_error ("%s: %s: %s", 
+      argv[0], ERROR_INITTOKEN, error);
     free (error);
     ret = EBADRQC;
     }

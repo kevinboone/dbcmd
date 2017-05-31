@@ -11,6 +11,7 @@ GPL v3.0
 #include <errno.h>
 #include <time.h>
 #include <unistd.h>
+#include <fnmatch.h>
 #include "cJSON.h"
 #include "dropbox.h"
 #include "token.h"
@@ -268,48 +269,129 @@ int cmd_list (const CmdContext *context, int argc, char **argv)
     { 
     const char *patharg = argv[1];
     if (strcmp (patharg, "/") == 0)
-      path = strdup (""); // Not / for root on DB, for some reason
+      path = strdup (""); // Not / for root on DB
     else
       path = strdup (patharg);
     }
   
   if (path[0] == 0 || path[0] == '/') 
     {
+    // Nothing other than / itself should end in a /
+    if (strlen (path) > 1)
+      {
+      if (path[strlen(path) - 1] == '/')
+        path[strlen(path) - 1] = 0;
+      }
+
     char *token = token_init (&error);
     if (token)
       {
-      List *list = dropbox_stat_create_list();
-      dropbox_list_files (token, path, list, TRUE, recursive, &error);
+      DBStat *stat = dropbox_stat_create();
 
+      dropbox_get_file_info (token, path, stat, &error);
       if (error)
-	{
-	log_error ("%s: %s", argv[0], error);
-	free (error);
-        ret = -1;
-	} 
+        {
+        log_error ("%s: Can't get remote file metadata: %s", 
+          argv[0], error);
+        free (error);
+        ret = EBADRQC;
+        }
       else
         {
-        if (long_ || recursive )
-          display_list_long (list, recursive);
-        else
-          display_list_short (list, screen_width);
-        } 
+        char *spec = NULL;
+        char *dir = NULL;
+	switch (dropbox_stat_get_type (stat))
+	  {
+	  case DBSTAT_FOLDER:
+            spec = strdup ("*");
+            dir = strdup (path);
+	    break;
+          default:
+            {
+            char *pathcopy = strdup (path);
+            char *p = strrchr (pathcopy, '/');
+            if (p == pathcopy) // e.g., /*.foo
+              {
+              dir = strdup (""); // DB root
+              spec = strdup (p+1);
+              }
+            else
+              {
+              *p = 0;
+              dir = strdup (pathcopy); 
+              spec = strdup (p+1);
+              }
+            free (pathcopy);
+            }
+            break;
+	  }
 
-      list_destroy (list);
+	List *list = dropbox_stat_create_list();
+	dropbox_list_files (token, dir, list, TRUE, recursive, &error);
+
+	if (error)
+	  {
+	  log_error ("%s: %s", argv[0], error);
+	  free (error);
+	  ret = -1;
+	  } 
+	else
+	  {
+          List *globbed_list = dropbox_stat_create_list ();
+
+          int i, l = list_length (list);
+	  for (i = 0; i < l; i++)
+	    {
+	    const DBStat *stat = list_get (list, i);
+	    const char *path = dropbox_stat_get_path (stat); 
+	    char *pathcopy = strdup (path);
+	    char *filename = basename (pathcopy);
+	    // Not sure about this logic
+	    if ((fnmatch (spec, path, 0) == 0)
+	        || (fnmatch (spec, filename, 0) == 0))
+              {
+              DBStat *statcopy = dropbox_stat_clone (stat);
+	      list_append (globbed_list, statcopy); 
+              }
+	    free (pathcopy);
+	    } 
+      
+          if (list_length (globbed_list) > 0) 
+            {
+	    if (long_ || recursive )
+	      display_list_long (globbed_list, recursive);
+	    else
+	      display_list_short (globbed_list, screen_width);
+            }
+          else
+            {
+            // This is not an error message; well, not really
+            printf ("%s: %s: %s\n", NAME, argv[0], ERROR_NOMATCHING);
+            }
+
+	  list_destroy (globbed_list);
+	  } 
+
+	list_destroy (list);
+        free (spec);
+        free (dir);
+        }
+
+      dropbox_stat_destroy (stat);
       free (token);
       }
     else
       {
-      log_error ("%s: Can't initialize access token: %s", 
-	argv[0], error);
+      log_error ("%s: %s: %s", 
+	argv[0], ERROR_INITTOKEN, error);
       free (error);
       ret = EBADRQC;
       }
     }
   else
     {
-    log_error ("%s: %s: %s", 
-      NAME, argv[0], ERROR_STARTSLASH); 
+    log_error ("%s: %s", 
+      argv[0], ERROR_STARTSLASH); 
     ret = EINVAL;
     }
 

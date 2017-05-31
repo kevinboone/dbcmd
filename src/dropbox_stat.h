@@ -41,4 +41,4 @@ void         dropbox_stat_set_hash (DBStat *self, const char *hash);
 void         dropbox_stat_set_length (DBStat *self, int64_t length);
 void         dropbox_stat_set_server_modified (DBStat *self, time_t t);
 void         dropbox_stat_destroy (DBStat *self);
-
+DBStat      *dropbox_stat_clone (const DBStat *self);

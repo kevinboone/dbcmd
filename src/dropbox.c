@@ -77,6 +77,8 @@ void dropbox_humanize_error (const char *db_error, char **error)
      asprintf (error, "Folder already exists");
   else if (strstr (db_error, "malformed_path"))
      asprintf (error, "Server path incorrectly formed");
+  else if (strstr (db_error, "insufficient_space"))
+     asprintf (error, "Insufficient space on server");
   else
     asprintf (error, "%s", db_error);
   }
@@ -880,6 +882,231 @@ void dropbox_download (const char *token, const char *source,
 
 
 /*---------------------------------------------------------------------------
+dropbox_upload_start
+---------------------------------------------------------------------------*/
+void dropbox_upload_start (const char *token, char**session, char **error)
+  {
+  log_debug ("Upload start");
+
+  CURL* curl = curl_easy_init();
+  if (curl)
+    {
+    struct DBWriteStruct response;
+    response.memory = malloc(1);  
+    response.size = 0;    
+     
+    struct curl_slist *headers = NULL;
+
+    curl_easy_setopt (curl, CURLOPT_POST, 1);
+
+    char *auth_header, *data;
+    asprintf (&auth_header, "Authorization: Bearer %s", token);
+    headers = curl_slist_append (headers, auth_header);
+    headers = curl_slist_append (headers, 
+	  "Content-Type: application/octet-stream");
+
+    curl_easy_setopt (curl, CURLOPT_URL, 
+	  "https://content.dropboxapi.com/2/files/upload_session/start");
+
+    asprintf (&data, 
+	  "Dropbox-API-Arg: {\"close\":false}");
+    headers = curl_slist_append (headers, data);
+
+    char curl_error [CURL_ERROR_SIZE];
+    curl_easy_setopt (curl, CURLOPT_ERRORBUFFER, curl_error);
+    curl_easy_setopt (curl, CURLOPT_WRITEFUNCTION, dropbox_write_callback);
+    curl_easy_setopt (curl, CURLOPT_WRITEDATA, &response);
+    curl_easy_setopt (curl, CURLOPT_READDATA, (void *)NULL);
+    curl_easy_setopt (curl, CURLOPT_HTTPHEADER, headers);
+    curl_easy_setopt (curl, CURLOPT_INFILESIZE, 0);
+    curl_easy_setopt (curl, CURLOPT_POSTFIELDSIZE, 0);
+
+    CURLcode curl_code = curl_easy_perform (curl);
+    if (curl_code == 0)
+      {
+      char *text = response.memory;
+      cJSON *root = cJSON_Parse (text); 
+      if (root)
+	{
+	cJSON *j_sid  = cJSON_GetObjectItem (root, "session_id");
+	if (j_sid)
+	  {
+          *session = strdup (j_sid->valuestring);
+          }
+        cJSON_Delete (root);
+        }
+      if (*session == NULL)
+        dropbox_check_response_for_error (text, error);
+      }
+     else
+      {
+      *error = strdup (curl_error); 
+      }
+
+     free (response.memory);
+     curl_slist_free_all (headers); 
+     free (auth_header);
+     free (data);
+     curl_easy_cleanup (curl);
+     }
+  else
+     {
+     *error = strdup (EASY_INIT_FAIL); 
+     }
+
+  }
+
+
+/*---------------------------------------------------------------------------
+dropbox_upload_done
+---------------------------------------------------------------------------*/
+void dropbox_upload_done (const char *token, const char *session, 
+    size_t offset, const char *path,  char **error)
+  {
+  log_debug ("Upload done, session = %s, offset=%ld\n", session, offset);
+
+  CURL* curl = curl_easy_init();
+  if (curl)
+    {
+    struct DBWriteStruct response;
+    response.memory = malloc(1);  
+    response.size = 0;    
+     
+    struct curl_slist *headers = NULL;
+
+    curl_easy_setopt (curl, CURLOPT_POST, 1);
+
+    char *auth_header, *data;
+    asprintf (&auth_header, "Authorization: Bearer %s", token);
+    headers = curl_slist_append (headers, auth_header);
+    headers = curl_slist_append (headers, 
+	  "Content-Type: application/octet-stream");
+
+    curl_easy_setopt (curl, CURLOPT_URL, 
+	  "https://content.dropboxapi.com/2/files/upload_session/finish");
+
+    asprintf (&data, 
+	  "Dropbox-API-Arg: {\"cursor\":{\"session_id\":\"%s\",\"offset\":%ld},\"commit\":{\"path\":\"%s\",\"mode\":\"overwrite\"}}",
+          session, offset, path);
+    headers = curl_slist_append (headers, data);
+
+    char curl_error [CURL_ERROR_SIZE];
+    curl_easy_setopt (curl, CURLOPT_ERRORBUFFER, curl_error);
+    curl_easy_setopt (curl, CURLOPT_WRITEFUNCTION, dropbox_write_callback);
+    curl_easy_setopt (curl, CURLOPT_WRITEDATA, &response);
+    curl_easy_setopt (curl, CURLOPT_READDATA, (void *)NULL);
+    curl_easy_setopt (curl, CURLOPT_HTTPHEADER, headers);
+    curl_easy_setopt (curl, CURLOPT_INFILESIZE, 0);
+    curl_easy_setopt (curl, CURLOPT_POSTFIELDSIZE, 0);
+
+    CURLcode curl_code = curl_easy_perform (curl);
+    if (curl_code == 0)
+      {
+      // TODO -- confirm response
+      char *text = response.memory;
+      cJSON *root = cJSON_Parse (text); 
+      if (root)
+	{
+	cJSON *j_name  = cJSON_GetObjectItem (root, "name");
+	if (j_name)
+	  {
+          // If we get _anything_ as a "name" in the response, assume
+          //  OK
+          }
+         else
+          {
+          dropbox_check_response_for_error (text, error);
+          }
+        cJSON_Delete (root);
+        }
+      }
+     else
+      {
+      *error = strdup (curl_error); 
+      }
+
+     free (response.memory);
+     curl_slist_free_all (headers); 
+     free (auth_header);
+     free (data);
+     curl_easy_cleanup (curl);
+     }
+  else
+     {
+     *error = strdup (EASY_INIT_FAIL); 
+     }
+
+  }
+
+
+/*---------------------------------------------------------------------------
+dropbox_upload_block
+---------------------------------------------------------------------------*/
+void dropbox_upload_block (const char *token, void *data, int length, 
+      const char *session, size_t offset, char **error) 
+  {
+  log_debug ("Upload block, session = %s, offset=%ld\n", session, offset);
+
+  CURL* curl = curl_easy_init();
+  if (curl)
+    {
+    struct DBWriteStruct response;
+    response.memory = malloc(1);  
+    response.size = 0;    
+     
+    struct curl_slist *headers = NULL;
+
+    curl_easy_setopt (curl, CURLOPT_POST, 1);
+
+    char *auth_header, *argdata;
+    asprintf (&auth_header, "Authorization: Bearer %s", token);
+    headers = curl_slist_append (headers, auth_header);
+    headers = curl_slist_append (headers, 
+	  "Content-Type: application/octet-stream");
+
+    curl_easy_setopt (curl, CURLOPT_URL, 
+	  "https://content.dropboxapi.com/2/files/upload_session/append_v2");
+
+    asprintf (&argdata, 
+	  "Dropbox-API-Arg: {\"cursor\":{\"session_id\":\"%s\",\"offset\":%ld},\"close\":false}",
+          session, offset);
+    headers = curl_slist_append (headers, argdata);
+
+    char curl_error [CURL_ERROR_SIZE];
+    curl_easy_setopt (curl, CURLOPT_ERRORBUFFER, curl_error);
+    curl_easy_setopt (curl, CURLOPT_WRITEFUNCTION, dropbox_write_callback);
+    curl_easy_setopt (curl, CURLOPT_WRITEDATA, &response);
+    curl_easy_setopt (curl, CURLOPT_HTTPHEADER, headers);
+    curl_easy_setopt (curl, CURLOPT_INFILESIZE, length);
+    curl_easy_setopt (curl, CURLOPT_POSTFIELDSIZE, length);
+    curl_easy_setopt (curl, CURLOPT_POSTFIELDS, (void *)data);
+
+    CURLcode curl_code = curl_easy_perform (curl);
+    if (curl_code == 0)
+      {
+      // TODO -- confirm response
+      }
+     else
+      {
+      *error = strdup (curl_error); 
+      }
+
+     free (response.memory);
+     curl_slist_free_all (headers); 
+     free (auth_header);
+     free (argdata);
+     curl_easy_cleanup (curl);
+     }
+  else
+     {
+     *error = strdup (EASY_INIT_FAIL); 
+     }
+
+
+  }
+
+
+/*---------------------------------------------------------------------------
 dropbox_upload
 ---------------------------------------------------------------------------*/
 void dropbox_upload (const char *token, const char *source, 
@@ -891,11 +1118,31 @@ void dropbox_upload (const char *token, const char *source,
     token, source, target); 
   struct stat sb;
   stat (source, &sb);
-  int length = (int) sb.st_size;
+  //int length = (int) sb.st_size;
 
   FILE *f = fopen (source, "r");
+  int buffsize = 1024*1024*4; // TODO
+  log_debug ("Upload blocksize is %d", buffsize);
   if (f)
     {
+    void *buff = malloc (buffsize);
+    size_t l;
+    size_t offset = 0;
+    char *session = NULL;
+
+    dropbox_upload_start (token, &session, error);
+
+    while ((l = fread (buff, 1, buffsize, f)) > 0 && !(*error))
+      {
+      dropbox_upload_block (token, buff, l, session, offset, error);
+      offset += l;
+      }
+
+    dropbox_upload_done (token, session, offset, target, error);
+
+    if (session) free (session);
+
+#ifdef no_longer_used 
     CURL* curl = curl_easy_init();
     if (curl)
       {
@@ -948,8 +1195,10 @@ void dropbox_upload (const char *token, const char *source,
     else
       {
       *error = strdup (EASY_INIT_FAIL); 
-      // TODO
       }
+#endif
+
+    free (buff);
     fclose(f);
     }
   else

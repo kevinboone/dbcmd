@@ -20,6 +20,7 @@ GPL v3.0
 #include "token.h"
 #include "commands.h"
 #include "log.h"
+#include "errmsg.h"
 
 
 
@@ -35,8 +36,8 @@ int cmd_hash (const CmdContext *context, int argc, char **argv)
 
   if (argc < 2)
     {
-    log_error ("%s: %s: this command takes one or more arguments\n",
-      NAME, argv[0]);
+    log_error ("%s: this command takes one or more arguments\n",
+      argv[0]);
     OUT
     return EINVAL;
     }
@@ -54,7 +55,7 @@ int cmd_hash (const CmdContext *context, int argc, char **argv)
       ret = dropbox_hash (argv[i], hash, &error); 
       if (error)
         {
-        log_error ("%s: %s: %s\n", NAME, argv[0], error);
+        log_error ("%s: %s: %s", argv[0], ERROR_LOCALHASH, error);
         free (error);
         }
       else

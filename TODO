@@ -1,3 +1,35 @@
 Handle wildcards in list command.
 
+Return valid errno values where possible (rather than just EINVAL as
+is nearly always the case now.) This means re-factoring the functions
+in dropbox.c quite extensively.
+
+Some sort of progress indication during large download/upload operations
+
+Sorting of list output
+
+Make upload block size configurable?
+
+Note that upload size restriction removed. However, uploading a file > 100Mb is slow, and if there is insufficient space on the server, we won't find out until the whole file is uploaded.
+
+Note that recursive mode has to be used carefully, with remote paths other
+than plain folders. Wildcards cannot be search on the server -- the
+entire directory tree has to be copied to the client first. "recursive"
+means exactly that -- the whole tree is copied recursively, starting at
+the specified root position. So, for example, trying to copy
+(say) "/*.jpg" with the recursive switch enabled could be tedious. 
+
+In addition, recursive mode applies to files that seem to be fully
+specified, as well as filenames with wildcards. So to use --recursive
+when copying (say) /foo.bar will result in a search for this file
+in every folder on the server, with the entire file list being transferred
+to the client. While this might occasionally be useful, more often that
+not it will just be tedious.
+
+Tidy up error messages (errmsg.h)
+
+Note that Dropbox won't handle multiple // in pathnames
+
+
+
 

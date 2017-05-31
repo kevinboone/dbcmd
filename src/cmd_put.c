@@ -166,8 +166,8 @@ static void put_one_item (const char *token, const CmdContext *context,
     if (S_ISREG (sb.st_mode))
       {
       // FILE 
-      if (sb.st_size < 150000000)
-        {
+      //if (sb.st_size < 150000000)
+      //  {
 	char *fullremote;
 
 	if (remote_is_dir)
@@ -179,12 +179,12 @@ static void put_one_item (const char *token, const CmdContext *context,
 	  counters);
 
 	free (fullremote);
-        }
-      else
-        {
-        log_warning ("File too large to upload using " NAME ": %s", relative);
-        counters->skip_too_big++;
-        }
+      //  }
+      //else
+      //  {
+      //  log_warning ("File too large to upload");
+      //  counters->skip_too_big++;
+      //  }
       }
     else if (S_ISDIR (sb.st_mode))
       {
@@ -300,8 +300,8 @@ int cmd_put (const CmdContext *context, int argc, char **argv)
 
   if (argc < 3)
     {
-    log_error ("%s: %s: this command takes two or more arguments\n",
-      NAME, argv[0]);
+    log_error ("%s: this command takes two or more arguments\n",
+      argv[0]);
     OUT
     return EINVAL;
     }
@@ -311,8 +311,8 @@ int cmd_put (const CmdContext *context, int argc, char **argv)
 
   if (dest_spec[0] != '/')
     {
-    log_error ("%s: %s: %s\n",
-      NAME, argv[0], ERROR_STARTSLASH);
+    log_error ("%s: %s\n",
+      argv[0], ERROR_STARTSLASH);
     free (dest_spec);
     OUT
     return EINVAL;
@@ -348,7 +348,7 @@ int cmd_put (const CmdContext *context, int argc, char **argv)
     //  multiple files, it will still need the target to be a folder
     if (argc > 3 && !remote_is_dir)
       {
-      log_error ("%s: %s: if multiple source files are specified, the target argument must refer to a pre-existing directory\n", NAME, argv[0]); 
+      log_error ("%s: %s", argv[0], ERROR_MULTIFILE); 
       }
     else
       {
@@ -403,8 +403,8 @@ int cmd_put (const CmdContext *context, int argc, char **argv)
     }
   else
     {
-    log_error ("%s: Can't initialize access token: %s", 
-      argv[0], error);
+    log_error ("%s: %s: %s", 
+      argv[0], ERROR_INITTOKEN, error);
     free (error);
     ret = EBADRQC;
     }

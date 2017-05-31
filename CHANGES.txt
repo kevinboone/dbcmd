@@ -13,3 +13,9 @@ Complete re-implementation, with the following improvements:
 * get and put now support multiple source arguments on the command line,
   each of which may expand to mutliple files and directories if
   wildcards are used
+
+0.0.3 May 2017
+* Implemented large file upload, using block transfers
+* Implemented wildcard search for 'list' command
+* Tidied up error reporting
+

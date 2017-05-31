@@ -101,16 +101,16 @@ int cmd_info (const CmdContext *context, int argc, char **argv)
 	}
       else
 	{
-	log_error ("%s: Can't initialize access token: %s", 
-	  argv[0], error);
+	log_error ("%s: %s: %s", 
+	  argv[0], ERROR_INITTOKEN, error);
 	free (error);
 	ret = EBADRQC;
 	}
       }
     else
       {
-      log_error ("%s: %s: %s", 
-	  NAME, argv[0], ERROR_STARTSLASH);
+      log_error ("%s: %s", 
+	  argv[0], ERROR_STARTSLASH);
       ret = EINVAL;
       }
     }

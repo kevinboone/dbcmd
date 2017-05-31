@@ -43,7 +43,8 @@ int cmd_delete_item (const CmdContext *context,
     dropbox_delete (token, path, &error);
     if (error)
       {
-      log_error ("%s: %s: %s", NAME, "delete", error);
+      //TODO
+      log_error ("%s: %s: %s", "delete", ERROR_CANTDELETE,  error);
       free (error);
       ret = EINVAL;
       } 
@@ -146,7 +147,7 @@ int cmd_delete_prompt_delete_list (const CmdContext *context,
 
   if (error)
     {
-    log_error ("%s: %s: %s", NAME, "delete", error);
+    log_error ("%s: %s: %s", "delete", ERROR_CANTLISTSERVER, error);
     free (error);
     ret = EINVAL;
     } 
@@ -171,7 +172,7 @@ int cmd_delete_prompt_delete_list (const CmdContext *context,
     l = list_length (globbed_list);
     if (l == 0)
       {
-      log_error ("%s: %s: no matching items to delete\n", NAME, "delete");
+      log_error ("%s: %s", "delete", ERROR_NOMATCHING);
       ret = EINVAL;
       }
     else
@@ -222,8 +223,8 @@ int cmd_delete (const CmdContext *context, int argc, char **argv)
 
   if (argc != 2)
     {
-    log_error ("%s: %s: this command takes one argument\n",
-      NAME, argv[0]);
+    log_error ("%s: this command takes one argument\n",
+      argv[0]);
     OUT
     return EINVAL;
     }
@@ -233,8 +234,8 @@ int cmd_delete (const CmdContext *context, int argc, char **argv)
 
   if (remote_spec[0] != '/')
     {
-    log_error ("%s: %s: %s\n",
-      NAME, argv[0], ERROR_STARTSLASH);
+    log_error ("%s: %s\n",
+      argv[0], ERROR_STARTSLASH);
     OUT
     return EINVAL;
     }
@@ -280,8 +281,8 @@ int cmd_delete (const CmdContext *context, int argc, char **argv)
     }
   else
     {
-    log_error ("%s: Can't initialize access token: %s", 
-       argv[0], error);
+    log_error ("%s: %s: %s", 
+       argv[0], ERROR_INITTOKEN, error);
     free (error);
     ret = EBADRQC;
     }

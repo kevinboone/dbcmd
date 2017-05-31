@@ -20,6 +20,25 @@ Copyright (c)2017 Kevin Boone, GPLv3.0
 
 
 /*---------------------------------------------------------------------------
+dropbox_stat_clone
+---------------------------------------------------------------------------*/
+DBStat *dropbox_stat_clone (const DBStat *self)
+  {
+  DBStat *other = dropbox_stat_create();
+  if (self->path)
+    other->path = strdup (self->path);
+  if (self->name)
+    other->name = strdup (self->name);
+  other->type = self->type;
+  other->length = self->length;
+  other->client_modified = self->client_modified; 
+  other->server_modified = self->server_modified; 
+  strncpy (other->hash, self->hash, DBHASH_LENGTH);
+  return other;
+  }
+
+
+/*---------------------------------------------------------------------------
 dropbox_stat_create
 ---------------------------------------------------------------------------*/
 DBStat *dropbox_stat_create (void)

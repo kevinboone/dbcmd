@@ -1,5 +1,5 @@
 NAME    := dbcmd
-VERSION := 0.0.2
+VERSION := 0.0.3
 CC      :=  gcc 
 LIBS    := -lm -lcurl ${EXTRA_LIBS} 
 TARGET	:= $(NAME) 
@@ -11,7 +11,7 @@ MANDIR  := $(DESTDIR)/share/man
 BINDIR  := $(DESTDIR)/bin
 SHARE   := /usr/share/$(TARGET)
 CFLAGS  := -fpie -fpic -Wall -DNAME=\"$(NAME)\" -DVERSION=\"$(VERSION)\" -g -I include ${EXTRA_CFLAGS}
-LDFLAGS := -pie -s ${EXTRA_LDFLAGS}
+LDFLAGS := -pie  ${EXTRA_LDFLAGS}
 
 all: $(TARGET)
 

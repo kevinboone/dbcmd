@@ -64,7 +64,7 @@ void log_vprintf (const int level, const char *fmt, va_list ap)
     // It's easier to fix that here than in the rest of the code ;) 
     if (str[strlen(str) - 1] == '\n')
       str[strlen(str) - 1] = 0;
-    printf ("%s %s\n", s, str);
+    printf ("%s %s %s\n", NAME, s, str);
     free (str);
     }
   }

@@ -162,7 +162,7 @@ static void cmd_get_one_remote_spec (const char *token,
 
   if (error)
     {
-    log_error ("%s: %s: %s", NAME, "get", error);
+    log_error ("%s: %s: %s", "get", ERROR_CANTINFOSERVER, error);
     free (error);
     } 
   else
@@ -241,7 +241,7 @@ static void cmd_get_one_remote_spec (const char *token,
 
     if (error)
       {
-      log_error ("%s: %s: %s", NAME, "get", error);
+      log_error ("%s: %s: %s", "get", ERROR_CANTLISTSERVER, error);
       free (error);
       } 
     else
@@ -266,12 +266,13 @@ static void cmd_get_one_remote_spec (const char *token,
       l = list_length (globbed_list);
       if (l > 1 && !local_is_dir)
         {
-        log_error ("%s: %s: %s", NAME, "get", 
-          "Multiple files can only be downloaded into an existing directory");
+        // TODO
+        log_error ("%s: %s", "get", ERROR_MULTIFILE);
         }
       else if (l == 0)
         {
-        log_warning ("%s: %s: %s", NAME, "get", 
+        // TODO
+        log_warning ("%s: %s", "get", 
           "No files selected for download");
         }
       else
@@ -317,8 +318,8 @@ int cmd_get (const CmdContext *context, int argc, char **argv)
 
   if (argc < 3)
     {
-    log_error ("%s: %s: this command takes two or more arguments\n",
-      NAME, argv[0]);
+    log_error ("%s: this command takes two or more arguments\n",
+      argv[0]);
     OUT
     return EINVAL;
     }
@@ -344,7 +345,7 @@ int cmd_get (const CmdContext *context, int argc, char **argv)
     //  multiple files, it will still need the target to be a folder
     if (argc > 3 && !local_is_dir)
       {
-      log_error ("%s: %s: if multiple source files are specified, the target argument must refer to a pre-existing directory\n", NAME, argv[0]); 
+      log_error ("%s: %s", argv[0], ERROR_MULTIFILE); 
       }
     else
       {
@@ -368,8 +369,8 @@ int cmd_get (const CmdContext *context, int argc, char **argv)
             }
           else
             {
-            log_error ("%s: %s: %s\n", 
-              NAME, argv[0], ERROR_STARTSLASH); 
+            log_error ("%s: %s", 
+              argv[0], ERROR_STARTSLASH); 
             }
 	  }
    
@@ -392,8 +393,8 @@ int cmd_get (const CmdContext *context, int argc, char **argv)
         }
       else
         {
-	log_error ("%s: Can't initialize access token: %s", 
-	  argv[0], error);
+	log_error ("%s: %s: %s", 
+	  argv[0], ERROR_INITTOKEN, error);
 	free (error);
 	ret = EBADRQC;
         }
