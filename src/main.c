@@ -193,6 +193,7 @@ int main (int argc, char **argv)
   BOOL recursive = FALSE;
   BOOL long_ = FALSE;
   BOOL yes = FALSE;
+  int buffsize_mb = 4;
   int screen_width = 80; //TODO
   int loglevel = INFO;
 
@@ -235,6 +236,7 @@ int main (int argc, char **argv)
      {"force", no_argument, NULL, 'f'},
      {"long", no_argument, NULL, 'l'},
      {"loglevel", required_argument, NULL, 0},
+     {"buffsize", required_argument, NULL, 'b'},
      {"width", required_argument, NULL, 'w'},
      {"yes", no_argument, NULL, 'y'},
      {"dry-run", no_argument, NULL, 'L'},
@@ -254,7 +256,7 @@ int main (int argc, char **argv)
   while (1)
    {
    int option_index = 0;
-   opt = getopt_long (argc, sorted_argv, "?valfrw:yL",
+   opt = getopt_long (argc, sorted_argv, "?valfrw:yLb:",
      long_options, &option_index);
 
    if (opt == -1) break;
@@ -280,6 +282,8 @@ int main (int argc, char **argv)
           yes = TRUE;
         else if (strcmp (long_options[option_index].name, "loglevel") == 0)
           loglevel = atoi (optarg);
+        else if (strcmp (long_options[option_index].name, "buffsize") == 0)
+          buffsize_mb = atoi (optarg);
         else if (strcmp (long_options[option_index].name, "width") == 0)
           screen_width = atoi (optarg);
         else
@@ -294,6 +298,7 @@ int main (int argc, char **argv)
      case 'y': yes = TRUE; break;
      case 'v': show_version = TRUE; break;
      case 'w': screen_width = atoi (optarg); break;
+     case 'b': buffsize_mb = atoi (optarg); break;
      case '?': show_usage = TRUE; break;
      default:  exit(-1);
      }
@@ -353,6 +358,7 @@ int main (int argc, char **argv)
       context.yes = yes;
       context.dry_run = dry_run;
       context.force = force;
+      context.buffsize_mb = buffsize_mb; 
       ret = cmd_entry->fn (&context, new_argc, new_argv); 
       }
     else

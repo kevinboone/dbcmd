@@ -16,6 +16,7 @@ typedef struct _CmdContext
   int screen_width;
   BOOL yes;
   BOOL dry_run;
+  int buffsize_mb;
   } CmdContext;
 
 

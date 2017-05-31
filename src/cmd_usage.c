@@ -25,11 +25,11 @@ void format_size (int64_t size, char **result)
   if (size < 1024)
     asprintf (result, "%ld bytes", size);
   else if (size < 1024 * 1024)
-    asprintf (result, "%.2g kB", size / 1024.0);
+    asprintf (result, "%.2f kB", size / 1024.0);
   else if (size < 1024 * 1024 * 1024)
-    asprintf (result, "%.2g MB", size / 1024.0 / 1024.0);
+    asprintf (result, "%.2f MB", size / 1024.0 / 1024.0);
   else
-    asprintf (result, "%.2g GB", size / 1024.0 / 1024.0 / 1024.0);
+    asprintf (result, "%.2f GB", size / 1024.0 / 1024.0 / 1024.0);
   }
 
 
@@ -59,9 +59,11 @@ int cmd_usage (const CmdContext *context, int argc, char **argv)
 	} 
       else
         {
-        char *s_quota, *s_usage;
+        char *s_quota, *s_usage, *s_remaining;
         format_size (quota, &s_quota);
         format_size (usage, &s_usage);
+        int64_t remaining = quota - usage;
+        format_size (remaining, &s_remaining);
         printf ("Quota: %s\n", s_quota);
         printf ("Usage: %s", s_usage);
         if (quota > 0) 
@@ -70,8 +72,16 @@ int cmd_usage (const CmdContext *context, int argc, char **argv)
           } 
         else
           printf ("\n");
+        printf ("Remaining: %s", s_remaining);
+        if (quota > 0) 
+          {
+          printf (" (%ld%%)\n", 100 * remaining / quota);
+          } 
+        else
+          printf ("\n");
         free (s_quota); 
         free (s_usage); 
+        free (s_remaining); 
         }
 
       free (token);

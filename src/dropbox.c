@@ -1110,7 +1110,7 @@ void dropbox_upload_block (const char *token, void *data, int length,
 dropbox_upload
 ---------------------------------------------------------------------------*/
 void dropbox_upload (const char *token, const char *source, 
-    const char *target, char **error)
+    const char *target, int buffsize_mb, char **error)
   {
   IN
   log_debug ("dropbox_upload token=%s, source=%s, "
@@ -1121,7 +1121,7 @@ void dropbox_upload (const char *token, const char *source,
   //int length = (int) sb.st_size;
 
   FILE *f = fopen (source, "r");
-  int buffsize = 1024*1024*4; // TODO -- make configurable?
+  int buffsize = 1024 * 1024 * buffsize_mb; 
   log_debug ("Upload blocksize is %d", buffsize);
   if (f)
     {

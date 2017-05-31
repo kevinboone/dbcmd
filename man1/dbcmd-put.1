@@ -41,7 +41,16 @@ the same folder structure in the remote directory \fI/docs/accounts/\fR.
 
 .SH "OPTIONS"
 
-See main manual page.
+See main manual page for general options. The following are specific
+to this command.
+
+.TP
+.BI -b,\-\-buffize=N
+Size of the upload buffer, in MB. The default value is 4. Better upload
+throughput might be possible with a larger value, up to the limit of
+149Mb imposed by Dropbox.
+.LP
+
 
 .SH NOTES
 

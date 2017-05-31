@@ -197,8 +197,9 @@ files.
 There is additionally no limit on the size of a file that can be uploaded
 or downloaded. However, Dropbox is not really designed for handling
 huge files, and these operations are slow, and can use a great deal
-of memory. For the record, uploads are performed in 4B blocks. 
-Increasing this can improve speed a little, but at the expense of
+of memory. For the record, uploads are performed in 4B blocks by default. 
+Increasing this (e.g., <code>--buffersize=100</code>) 
+can improve speed a little, but at the expense of
 increased memory usage.
 <p/>
 The file containing the stored authorization token is not encrypted. It could

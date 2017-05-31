@@ -53,6 +53,13 @@ static void cmd_put_consider_and_upload (const char *token,
   BOOL dry_run = context->dry_run;
 
   counters->total_items++;
+  int buffsize_mb = context->buffsize_mb;
+  if (buffsize_mb <= 0) buffsize_mb = 0;
+  if (buffsize_mb >= 150)
+     {
+     log_warning ("Limiting upload buffer size to 149Mb");
+     buffsize_mb = 149;
+     }
 
   log_debug ("Considering uploading %s to %s", source, target);
 
@@ -116,7 +123,7 @@ static void cmd_put_consider_and_upload (const char *token,
       }
     else
       {
-      dropbox_upload (token, source, target, &error); 
+      dropbox_upload (token, source, target, buffsize_mb, &error); 
       if (error)
         {
         log_error ("%s: %s: %s", argv0, ERROR_UPLOAD, error);

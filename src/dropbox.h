@@ -28,6 +28,6 @@ void  dropbox_get_file_info (const char *token, const char *file,
           DBStat *stat, char **error);
 BOOL  dropbox_hash (const char *filename, char output_hash[65], char **error);
 void  dropbox_upload (const char *token, const char *source, 
-          const char *target, char **error);
+          const char *target, int buffsize_mb, char **error);
 
 
