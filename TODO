@@ -2,8 +2,6 @@ Return valid errno values where possible (rather than just EINVAL as
 is nearly always the case now.) This means re-factoring the functions
 in dropbox.c quite extensively.
 
-Some sort of progress indication during large download/upload operations
-
 Sorting of list output
 
 Make upload block size configurable?

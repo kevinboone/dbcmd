@@ -23,6 +23,7 @@ GPL v3.0
 #include "commands.h"
 #include "log.h"
 #include "errmsg.h"
+#include "misc.h"
 
 
 /*==========================================================================
@@ -42,6 +43,37 @@ typedef struct _Counters
 Forward
 *==========================================================================*/
 static void cmd_get_make_directory (const char *_filename);
+
+
+/*==========================================================================
+cmd_get_progress_func
+*==========================================================================*/
+static void cmd_get_progress_func (int64_t transferred, int64_t total)
+  {
+  if (isatty (STDIN_FILENO))
+    {
+    if (transferred < 0)
+      {
+      printf ("\n"); // Clear progress line when done
+      }
+    else
+      {
+      char *s_transferred, *s_total;
+      misc_format_size (transferred, &s_transferred);
+      misc_format_size (total, &s_total);
+      char *line;
+      asprintf (&line, "Downloaded %s of %s", s_transferred, s_total);
+      printf (line);
+      int i, l = strlen (line);
+      for (i = l; i < 40; i++) fputs (" ", stdout);
+      printf ("\r"); 
+      fflush (stdout);
+      free (line);
+      free (s_transferred);
+      free (s_total);
+      }
+    }
+  }
 
 
 /*==========================================================================
@@ -113,7 +145,8 @@ static void cmd_get_consider_and_download (const char *token,
       {
       char *error = NULL;
       cmd_get_make_directory (target);
-      dropbox_download (token, source, target, &error); 
+      dropbox_download (token, source, target, cmd_get_progress_func, 
+         &error); 
       if (error)
         {
         log_error ("%s: %s: %s", argv0, ERROR_DOWNLOAD, error);

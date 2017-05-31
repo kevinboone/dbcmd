@@ -11,6 +11,7 @@ GPL v3.0
 #include <errno.h>
 #include <libgen.h>
 #include <time.h>
+#include <unistd.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <dirent.h>
@@ -21,6 +22,7 @@ GPL v3.0
 #include "commands.h"
 #include "log.h"
 #include "errmsg.h"
+#include "misc.h"
 
 
 /*==========================================================================
@@ -40,6 +42,37 @@ typedef struct _Counters
   int skip_too_big;
   int directories_could_not_be_expanded;
   } Counters;
+
+
+/*==========================================================================
+cmd_put_progress_func
+*==========================================================================*/
+static void cmd_put_progress_func (int64_t transferred, int64_t total)
+  {
+  if (isatty (STDIN_FILENO))
+    {
+    if (transferred < 0)
+      {
+      printf ("\n"); // Clear progress line when done
+      }
+    else
+      {
+      char *s_transferred, *s_total;
+      misc_format_size (transferred, &s_transferred);
+      misc_format_size (total, &s_total);
+      char *line;
+      asprintf (&line, "Uploaded %s of %s", s_transferred, s_total);
+      printf (line);
+      int i, l = strlen (line);
+      for (i = l; i < 40; i++) fputs (" ", stdout);
+      printf ("\r"); 
+      fflush (stdout);
+      free (line);
+      free (s_transferred);
+      free (s_total);
+      }
+    }
+  }
 
 
 /*==========================================================================
@@ -123,7 +156,8 @@ static void cmd_put_consider_and_upload (const char *token,
       }
     else
       {
-      dropbox_upload (token, source, target, buffsize_mb, &error); 
+      dropbox_upload (token, source, target, buffsize_mb, 
+        cmd_put_progress_func, &error); 
       if (error)
         {
         log_error ("%s: %s: %s", argv0, ERROR_UPLOAD, error);

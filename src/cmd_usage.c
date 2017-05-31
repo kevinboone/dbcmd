@@ -16,21 +16,7 @@ GPL v3.0
 #include "commands.h"
 #include "log.h"
 #include "errmsg.h"
-
-/*==========================================================================
-format_size
-*==========================================================================*/
-void format_size (int64_t size, char **result)
-  {
-  if (size < 1024)
-    asprintf (result, "%ld bytes", size);
-  else if (size < 1024 * 1024)
-    asprintf (result, "%.2f kB", size / 1024.0);
-  else if (size < 1024 * 1024 * 1024)
-    asprintf (result, "%.2f MB", size / 1024.0 / 1024.0);
-  else
-    asprintf (result, "%.2f GB", size / 1024.0 / 1024.0 / 1024.0);
-  }
+#include "misc.h"
 
 
 /*==========================================================================
@@ -60,10 +46,10 @@ int cmd_usage (const CmdContext *context, int argc, char **argv)
       else
         {
         char *s_quota, *s_usage, *s_remaining;
-        format_size (quota, &s_quota);
-        format_size (usage, &s_usage);
+        misc_format_size (quota, &s_quota);
+        misc_format_size (usage, &s_usage);
         int64_t remaining = quota - usage;
-        format_size (remaining, &s_remaining);
+        misc_format_size (remaining, &s_remaining);
         printf ("Quota: %s\n", s_quota);
         printf ("Usage: %s", s_usage);
         if (quota > 0) 

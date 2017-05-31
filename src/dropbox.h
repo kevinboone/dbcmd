@@ -10,6 +10,7 @@ GPL v3.0
 #include "list.h"
 #include "dropbox_stat.h"
 
+typedef void (*DBProgressFunc) (int64_t transferred, int64_t total);
 
 void dropbox_move (const char *token, const char *old_path, 
            const char *new_path, char **error);
@@ -20,7 +21,7 @@ void dropbox_newfolder (const char *token, const char *new_path,
 void dropbox_delete (const char *token, const char *path, 
            char **error);
 void  dropbox_download (const char *token, const char *source, 
-           const char *target, char **error);
+           const char *target, DBProgressFunc pf, char **error);
 void  dropbox_list_files (const char *token, const char *path, 
            List *list, BOOL include_dirs, BOOL recursive, char **error);
 char *dropbox_get_token (const char *code, char **error);
@@ -28,6 +29,6 @@ void  dropbox_get_file_info (const char *token, const char *file,
           DBStat *stat, char **error);
 BOOL  dropbox_hash (const char *filename, char output_hash[65], char **error);
 void  dropbox_upload (const char *token, const char *source, 
-          const char *target, int buffsize_mb, char **error);
+          const char *target, int buffsize_mb, DBProgressFunc pf, char **error);
 
 

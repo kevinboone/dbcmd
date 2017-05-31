@@ -61,6 +61,17 @@ struct DBStoreStruct
   };
 
 
+struct DBProgStruct
+  {
+  int64_t transferred;
+  int64_t total; 
+  int64_t offset; // Used only in block-mode uploads
+  enum {PROG_UPLOAD, PROG_DOWNLOAD} mode;
+  time_t last;
+  DBProgressFunc pf;
+  };
+
+
 /*---------------------------------------------------------------------------
 dropbox_humanize_error
 ---------------------------------------------------------------------------*/
@@ -803,10 +814,52 @@ void dropbox_delete (const char *token, const char *path,
 
 
 /*---------------------------------------------------------------------------
+dropbox_progress_callback
+---------------------------------------------------------------------------*/
+int dropbox_progress_callback (void *clientp, curl_off_t dltotal, 
+      curl_off_t dlnow, curl_off_t ultotal, curl_off_t ulnow)
+  {
+  struct DBProgStruct *prog = (struct DBProgStruct *)clientp;
+  if (prog->pf == NULL) return 0;
+
+  time_t now = time (NULL);
+  if (TRUE)
+    {
+    if (prog->mode == PROG_DOWNLOAD)
+      {
+      if (dltotal > 0)
+        {
+        prog->total = dltotal;
+        if (dlnow > 0)
+          {
+          prog->transferred = dlnow;
+          }
+        }
+      if (prog->total > 0) 
+        {
+        if (prog->last < now)
+          prog->pf (prog->transferred, prog->total);
+        }
+      }
+    else if (prog->mode == PROG_UPLOAD)
+      {
+      prog->transferred = ulnow + prog->offset;
+      if (prog->last < now)
+        prog->pf (prog->transferred, prog->total);
+      }
+    prog->last = now; 
+    }
+
+
+  return 0;
+  }
+
+
+/*---------------------------------------------------------------------------
 dropbox_download
 ---------------------------------------------------------------------------*/
 void dropbox_download (const char *token, const char *source, 
-    const char *target, char **error)
+    const char *target, DBProgressFunc pf, char **error)
   {
   IN
   log_debug ("dropbox_download token=%s, source=%s, "
@@ -844,10 +897,22 @@ void dropbox_download (const char *token, const char *source,
       curl_easy_setopt (curl, CURLOPT_HTTPHEADER, headers);
       curl_easy_setopt (curl, CURLOPT_WRITEFUNCTION, dropbox_store_callback);
       curl_easy_setopt (curl, CURLOPT_WRITEDATA, (void *) &ss);
+      curl_easy_setopt (curl, CURLOPT_XFERINFOFUNCTION, 
+          dropbox_progress_callback); 
+      struct DBProgStruct prog;
+      prog.mode = PROG_DOWNLOAD;
+      prog.last = 0;
+      prog.pf = pf;
+      curl_easy_setopt (curl, CURLOPT_XFERINFODATA, 
+          (void *)&prog); 
+      curl_easy_setopt (curl, CURLOPT_NOPROGRESS, 
+          0); 
       // It seems we need to post _something_, or curl just gets stuck
       curl_easy_setopt (curl, CURLOPT_POSTFIELDS, "");
 
       CURLcode curl_code = curl_easy_perform (curl);
+      if (pf) pf (prog.total, prog.total); // Ensure that 100% is shown 
+      if (pf) pf (-1, -1); // Clear progress
       if (curl_code == 0)
 	{
         // We just have to assume that everything went OK. If it didn't,
@@ -1043,7 +1108,8 @@ void dropbox_upload_done (const char *token, const char *session,
 dropbox_upload_block
 ---------------------------------------------------------------------------*/
 void dropbox_upload_block (const char *token, void *data, int length, 
-      const char *session, size_t offset, char **error) 
+      const char *session, size_t offset, struct DBProgStruct *prog,
+      char **error) 
   {
   log_debug ("Upload block, session = %s, offset=%ld\n", session, offset);
 
@@ -1080,6 +1146,12 @@ void dropbox_upload_block (const char *token, void *data, int length,
     curl_easy_setopt (curl, CURLOPT_INFILESIZE, length);
     curl_easy_setopt (curl, CURLOPT_POSTFIELDSIZE, length);
     curl_easy_setopt (curl, CURLOPT_POSTFIELDS, (void *)data);
+    curl_easy_setopt (curl, CURLOPT_XFERINFOFUNCTION, 
+          dropbox_progress_callback); 
+    curl_easy_setopt (curl, CURLOPT_XFERINFODATA, 
+          (void *)prog); 
+    curl_easy_setopt (curl, CURLOPT_NOPROGRESS, 
+          0); 
 
     CURLcode curl_code = curl_easy_perform (curl);
     if (curl_code == 0)
@@ -1110,7 +1182,7 @@ void dropbox_upload_block (const char *token, void *data, int length,
 dropbox_upload
 ---------------------------------------------------------------------------*/
 void dropbox_upload (const char *token, const char *source, 
-    const char *target, int buffsize_mb, char **error)
+    const char *target, int buffsize_mb, DBProgressFunc pf, char **error)
   {
   IN
   log_debug ("dropbox_upload token=%s, source=%s, "
@@ -1125,20 +1197,32 @@ void dropbox_upload (const char *token, const char *source,
   log_debug ("Upload blocksize is %d", buffsize);
   if (f)
     {
+    struct stat sb;
+    stat (source, &sb);
+
     void *buff = malloc (buffsize);
     size_t l;
     size_t offset = 0;
     char *session = NULL;
 
     dropbox_upload_start (token, &session, error);
+    struct DBProgStruct prog;
+    prog.mode = PROG_UPLOAD;
+    prog.total = sb.st_size;
+    prog.offset = 0; 
+    prog.last = 0;
+    prog.pf = pf;
 
     while ((l = fread (buff, 1, buffsize, f)) > 0 && !(*error))
       {
-      dropbox_upload_block (token, buff, l, session, offset, error);
+      dropbox_upload_block (token, buff, l, session, offset, &prog, error);
       offset += l;
+      prog.offset = offset;
       }
 
     dropbox_upload_done (token, session, offset, target, error);
+    if (pf) pf (prog.total, prog.total); // Ensure that 100% is shown 
+    if (pf) pf (-1, -1); // Clear progress
 
     if (session) free (session);
 

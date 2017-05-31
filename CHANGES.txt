@@ -20,5 +20,5 @@ Complete re-implementation, with the following improvements:
 * Implemented wildcard search for 'list' command
 * Tidied up error reporting
 * Implemented "usage" command
-
+* Implemented progress indicator during upload and download
 
