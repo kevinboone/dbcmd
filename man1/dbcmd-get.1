@@ -42,7 +42,24 @@ the same structure.
 
 .SH "OPTIONS"
 
-See main manaul page.
+.TP
+.BI -d,\-\-days-ago={days}
+Do not even consider retrieving files whose modification time, as stored
+on the server, is more than the specified number of days ago. It is
+important to understand that Dropbox uses hashes, not datestamps, to
+determine whether files are up-to-date. However, the calculation of
+hashes on the client can be very time-consuming, especially if files are
+large or plentiful. The \fI--days-ago\fR option causes the server's stored
+timestamp to be checked before the hash operation, and the file will only
+be considered further if it is more recent that the specified limit.
+
+Note that this option applies only to files, not to directories, which
+have no timestamp on Dropbox. \fIdbcmd\fR will still create directories
+if asked to do a recursive get, even if the timestamp consideration prevents
+any files being stored in them.
+.LP
+
+See main manual page for more general options.
 
 .SH NOTES
 

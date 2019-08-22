@@ -2,7 +2,9 @@ Return valid errno values where possible (rather than just EINVAL as
 is nearly always the case now.) This means re-factoring the functions
 in dropbox.c quite extensively.
 
-Sorting of list output
+Make list output sortable.
 
-Make upload block size configurable?
-
+Sort out problem where only long-form switches can be used after
+the command name, whilst short-form switches can be used before
+and after. This requires refactoring the way that command-line
+parsing is done.

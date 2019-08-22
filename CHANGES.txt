@@ -14,8 +14,8 @@ Complete re-implementation, with the following improvements:
   each of which may expand to mutliple files and directories if
   wildcards are used
 
-0.0.3 May 2017
-* Implemented large file upload, using block transfers with selectable
+0.0.3 June 2017
+* Implemented large file upload, using block transfers with configurable 
   block size
 * Implemented wildcard search for 'list' command
 * Tidied up error reporting

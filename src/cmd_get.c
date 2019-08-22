@@ -36,6 +36,7 @@ typedef struct _Counters
   int skip_unchanged;
   int download_failed;
   int downloaded;
+  int skip_too_old;
   } Counters;
 
 
@@ -110,29 +111,78 @@ static void cmd_get_consider_and_download (const char *token,
       }
     else
       {
-      const char *remote_hash = dropbox_stat_get_hash (stat);
-      char local_hash [DBHASH_LENGTH];
-      dropbox_hash (target, local_hash, &error); // We ignore error here
-      if (strcmp (local_hash, remote_hash) == 0)
+      // Even if the local file exists, we need to check the date
+      //  on the server, if --days-ago was specified. We must do 
+      //  this before checking hashes, because checking hashes is
+      //  slow
+      time_t smod = dropbox_stat_get_server_modified (stat);
+      time_t now = time (NULL);
+      int elapsed_days = (int)((now - smod) / 24 / 3600);
+
+      int days_old = context->days_old;
+      if (days_old != 0 && elapsed_days >= days_old)
         {
-        log_info ("Not downloading unchanged file '%s'", source);
-        counters->skip_unchanged++;
-        doit = FALSE;
-        }
-      else
+	log_info ("Skipping '%s' because file on server "
+	  "is more than %d day(s) old", 
+	  source, days_old);
+        counters->skip_too_old++;
+	}
+     else
         {
-        log_info ("Downloading updated file '%s'", source);
-        doit = TRUE;
-        }
+        const char *remote_hash = dropbox_stat_get_hash (stat);
+        char local_hash [DBHASH_LENGTH];
+        dropbox_hash (target, local_hash, &error); // We ignore error here
+        if (strcmp (local_hash, remote_hash) == 0)
+          {
+          log_info ("Not downloading unchanged file '%s'", source);
+          counters->skip_unchanged++;
+          doit = FALSE;
+          }
+        else
+          {
+          log_info ("Downloading updated file '%s'", source);
+          doit = TRUE;
+          }
+	}
       }
      dropbox_stat_destroy (stat);
      }
   else
     {
-    doit = TRUE;
-    log_info ("Downloading '%s' because local file does not exist", source);
-    }
+    doit = FALSE;
+    // Local does not exist
+    char *error = NULL;
+    DBStat *stat = dropbox_stat_create();
+    dropbox_get_file_info (token, source, stat, &error);
+    if (error)
+      {
+      // Should never happen, unless someone pulls the plug mid-operation
+      log_error ("%s: %s: %s", argv0, ERROR_CANTINFOSERVER, error);
+      counters->get_info_failed++;
+      free (error);
+      }
+    else
+      {
+      time_t smod = dropbox_stat_get_server_modified (stat);
+      time_t now = time (NULL);
+      int elapsed_days = (int)((now - smod) / 24 / 3600);
 
+      int days_old = context->days_old;
+      if (days_old != 0 && elapsed_days >= days_old)
+        {
+        log_info 
+	   ("Skipping '%s' because file on server is more than %d day(s) old", 
+	      source, days_old);
+        counters->skip_too_old++;
+	}
+      else
+        {
+	doit = TRUE;
+        log_info ("Downloading '%s' because local file does not exist", source);
+	}
+      }
+    dropbox_stat_destroy (stat);
+    }
 
   if (doit)
     {
@@ -415,6 +465,8 @@ int cmd_get (const CmdContext *context, int argc, char **argv)
 	  printf ("Skipped because unchanged: %d\n", counters->skip_unchanged); 
 	int total_errors = counters->get_info_failed
 	   + counters->download_failed;
+	if (counters->skip_too_old > 0)
+	  printf ("Skipped because too old: %d\n", counters->skip_too_old); 
 	if (total_errors > 0)
 	  {
 	  printf ("Errors: %d\n", total_errors); 

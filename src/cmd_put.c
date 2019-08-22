@@ -40,6 +40,7 @@ typedef struct _Counters
   int skip_not_recursive;
   int skip_unchanged;
   int skip_too_big;
+  int skip_too_old;
   int directories_could_not_be_expanded;
   } Counters;
 
@@ -98,53 +99,71 @@ static void cmd_put_consider_and_upload (const char *token,
 
   BOOL doit = FALSE;
 
-  DBStat *stat = dropbox_stat_create();
-  char *error = NULL;
-  dropbox_get_file_info (token, target, stat, &error);
-  if (error)
+  struct stat sb;
+  stat (source, &sb);
+  time_t now = time (NULL);
+  time_t smod = sb.st_mtime;
+  int elapsed_days = (int)((now - smod) / 24 / 3600);
+
+  int days_old = context->days_old;
+//printf ("elapsed=%d\n", elapsed_days);
+  if (days_old == 0 || elapsed_days < days_old)
     {
-    log_error ("%s: %s: %s", argv0, ERROR_CANTINFOSERVER, error);
-    counters->get_info_failed++;
-    free (error);
-    }
-  else
-    {
-    if (dropbox_stat_get_type (stat) == DBSTAT_FILE)
+    DBStat *stat = dropbox_stat_create();
+    char *error = NULL;
+    dropbox_get_file_info (token, target, stat, &error);
+    if (error)
       {
-      const char *remote_hash = dropbox_stat_get_hash (stat);
-      char local_hash [DBHASH_LENGTH];
-      dropbox_hash (source, local_hash, &error); 
-      if (error)
+      log_error ("%s: %s: %s", argv0, ERROR_CANTINFOSERVER, error);
+      counters->get_info_failed++;
+      free (error);
+      }
+    else
+      {
+      if (dropbox_stat_get_type (stat) == DBSTAT_FILE)
         {
-        log_error ("%s: %s: %s", argv0, ERROR_LOCALHASH, error);
-        free (error);
-        counters->read_local_failed++;
-        }
-      else
-        {
-        if (strcmp (remote_hash, local_hash) != 0)
+        const char *remote_hash = dropbox_stat_get_hash (stat);
+        char local_hash [DBHASH_LENGTH];
+        dropbox_hash (source, local_hash, &error); 
+        if (error)
           {
-          log_debug ("Will upload, as hashes are different");
-          log_info ("Uploading updated file '%s' to server", source);
-          doit = TRUE;
+          log_error ("%s: %s: %s", argv0, ERROR_LOCALHASH, error);
+          free (error);
+          counters->read_local_failed++;
           }
         else
           {
-          log_info 
-             ("Skipping file '%s' that is identical on client and server",
-              source);
-          counters->skip_unchanged++;
+          if (strcmp (remote_hash, local_hash) != 0)
+            {
+            log_debug ("Will upload, as hashes are different");
+            log_info ("Uploading updated file '%s' to server", source);
+            doit = TRUE;
+            }
+          else
+            {
+            log_info 
+               ("Skipping file '%s' that is identical on client and server",
+                source);
+            counters->skip_unchanged++;
+            }
           }
         }
+      else 
+        {
+        log_info ("Uploading new file '%s' to server", source);
+        log_debug ("Will upload '%s', as it does not exist on the server", 
+           source);
+        doit = TRUE;
+        }
+      dropbox_stat_destroy (stat); 
       }
-    else 
-      {
-      log_info ("Uploading new file '%s' to server", source);
-      log_debug ("Will upload '%s', as it does not exist on the server", 
-         source);
-      doit = TRUE;
-      }
-    dropbox_stat_destroy (stat); 
+    }
+  else
+    {
+    log_info 
+       ("Skipping '%s' because local file is more than %d day(s) old", 
+	  source, days_old);
+    counters->skip_too_old++;
     }
 
   if (doit)
@@ -156,6 +175,7 @@ static void cmd_put_consider_and_upload (const char *token,
       }
     else
       {
+      char *error = NULL;
       dropbox_upload (token, source, target, buffsize_mb, 
         cmd_put_progress_func, &error); 
       if (error)
@@ -317,15 +337,23 @@ static void cmd_put_one_local_spec (const char *token,
   else
     {
     char *abspath = realpath (local, NULL);
-    char *_local = strdup (abspath);
-    char *__local = strdup (abspath);
-    char *filename = basename (_local);
-    char *dir = dirname (__local);
-    put_one_item (token, context, dir, filename, remote, counters, 
-      remote_is_dir, argv0);
-    free (_local);
-    free (__local);
-    free (abspath);
+    if (abspath)
+      {
+      char *_local = strdup (abspath);
+      char *__local = strdup (abspath);
+      char *filename = basename (_local);
+      char *dir = dirname (__local);
+      put_one_item (token, context, dir, filename, remote, counters, 
+        remote_is_dir, argv0);
+      free (_local);
+      free (__local);
+      free (abspath);
+      }
+    else
+      {
+      counters->read_local_failed++;
+      log_error ("Can't get full path for '%s'", local);
+      }
     }
   }
 
@@ -410,7 +438,7 @@ int cmd_put (const CmdContext *context, int argc, char **argv)
       printf ("Uploaded: %d\n", counters->uploaded); 
       int total_skips = counters->skip_not_file_or_dir +  
             counters->skip_not_recursive + counters->skip_unchanged 
-            +counters->skip_too_big;
+            + counters->skip_too_big + counters->skip_too_old;
       if (total_skips > 0)
         {
         printf ("Skipped: %d\n", total_skips); 
@@ -418,6 +446,7 @@ int cmd_put (const CmdContext *context, int argc, char **argv)
         printf ("  Too large: %d\n", counters->skip_too_big);
         printf ("  Not regular file/directory: %d\n", 
            counters->skip_not_file_or_dir);
+        printf ("  Too old: %d\n", counters->skip_too_old);
         printf ("  Not expanded without recursive mode: %d\n", 
           counters->skip_not_recursive);
         }

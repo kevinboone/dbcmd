@@ -17,6 +17,7 @@ typedef struct _CmdContext
   BOOL yes;
   BOOL dry_run;
   int buffsize_mb;
+  int days_old;
   } CmdContext;
 
 

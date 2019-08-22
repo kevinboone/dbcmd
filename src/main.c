@@ -196,6 +196,7 @@ int main (int argc, char **argv)
   int buffsize_mb = 4;
   int screen_width = 80; //TODO
   int loglevel = INFO;
+  int days_old = 0;
 
   // Sort the arguments so that switches come first
   // A consequence of this rather ugly process is that
@@ -238,6 +239,7 @@ int main (int argc, char **argv)
      {"loglevel", required_argument, NULL, 0},
      {"buffsize", required_argument, NULL, 'b'},
      {"width", required_argument, NULL, 'w'},
+     {"days-old", required_argument, NULL, 'd'},
      {"yes", no_argument, NULL, 'y'},
      {"dry-run", no_argument, NULL, 'L'},
      {0, 0, 0, 0}
@@ -256,7 +258,7 @@ int main (int argc, char **argv)
   while (1)
    {
    int option_index = 0;
-   opt = getopt_long (argc, sorted_argv, "?valfrw:yLb:",
+   opt = getopt_long (argc, sorted_argv, "?valfrw:yLb:d:",
      long_options, &option_index);
 
    if (opt == -1) break;
@@ -286,6 +288,8 @@ int main (int argc, char **argv)
           buffsize_mb = atoi (optarg);
         else if (strcmp (long_options[option_index].name, "width") == 0)
           screen_width = atoi (optarg);
+        else if (strcmp (long_options[option_index].name, "days-old") == 0)
+          days_old = atoi (optarg);
         else
           exit (-1);
         break;
@@ -299,6 +303,7 @@ int main (int argc, char **argv)
      case 'v': show_version = TRUE; break;
      case 'w': screen_width = atoi (optarg); break;
      case 'b': buffsize_mb = atoi (optarg); break;
+     case 'd': days_old = atoi (optarg); break;
      case '?': show_usage = TRUE; break;
      default:  exit(-1);
      }
@@ -359,6 +364,7 @@ int main (int argc, char **argv)
       context.dry_run = dry_run;
       context.force = force;
       context.buffsize_mb = buffsize_mb; 
+      context.days_old = days_old;
       ret = cmd_entry->fn (&context, new_argc, new_argv); 
       }
     else
