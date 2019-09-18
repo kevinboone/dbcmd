@@ -18,6 +18,7 @@ typedef struct _CmdContext
   BOOL dry_run;
   int buffsize_mb;
   int days_old;
+  BOOL new_files_only;
   } CmdContext;
 
 

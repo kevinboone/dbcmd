@@ -193,6 +193,7 @@ int main (int argc, char **argv)
   BOOL recursive = FALSE;
   BOOL long_ = FALSE;
   BOOL yes = FALSE;
+  BOOL new_files_only = FALSE;
   int buffsize_mb = 4;
   int screen_width = 80; //TODO
   int loglevel = INFO;
@@ -242,6 +243,7 @@ int main (int argc, char **argv)
      {"days-old", required_argument, NULL, 'd'},
      {"yes", no_argument, NULL, 'y'},
      {"dry-run", no_argument, NULL, 'L'},
+     {"new-files-only", no_argument, NULL, 'N'},
      {0, 0, 0, 0}
    };
 
@@ -258,7 +260,7 @@ int main (int argc, char **argv)
   while (1)
    {
    int option_index = 0;
-   opt = getopt_long (argc, sorted_argv, "?valfrw:yLb:d:",
+   opt = getopt_long (argc, sorted_argv, "?valfrw:yLb:d:N",
      long_options, &option_index);
 
    if (opt == -1) break;
@@ -280,6 +282,9 @@ int main (int argc, char **argv)
           long_ = TRUE;
         else if (strcmp (long_options[option_index].name, "dry-run") == 0)
           dry_run = TRUE;
+        else if (strcmp (long_options[option_index].name, 
+	    "new-files-only") == 0)
+          new_files_only = TRUE;
         else if (strcmp (long_options[option_index].name, "yes") == 0)
           yes = TRUE;
         else if (strcmp (long_options[option_index].name, "loglevel") == 0)
@@ -304,11 +309,11 @@ int main (int argc, char **argv)
      case 'w': screen_width = atoi (optarg); break;
      case 'b': buffsize_mb = atoi (optarg); break;
      case 'd': days_old = atoi (optarg); break;
+     case 'N': new_files_only = TRUE; break;
      case '?': show_usage = TRUE; break;
      default:  exit(-1);
      }
    }
-
 
   if (show_usage)
     {
@@ -365,6 +370,7 @@ int main (int argc, char **argv)
       context.force = force;
       context.buffsize_mb = buffsize_mb; 
       context.days_old = days_old;
+      context.new_files_only = new_files_only;
       ret = cmd_entry->fn (&context, new_argc, new_argv); 
       }
     else

@@ -50,6 +50,19 @@ Size of the upload buffer, in MB. The default value is 4. Better upload
 throughput might be possible with a larger value, up to the limit of
 149Mb imposed by Dropbox.
 .LP
+.TP
+.BI --days-old=N
+Only consider files that were modified in the last N days. Files will not
+be uploaded if the checksums match on the local machine and the Dropbox
+server, but specifying an age limit prevents the calculation of
+checksums, which can speed things up considerably. A file that is more
+than N days old on the local machine will not even be consiered for
+uploading, so no checksums will be calculated.
+.LP
+.TP
+.BI --new-files-only
+Only upload files to the Dropbox server if they do not already exist.
+.LP
 
 
 .SH NOTES
@@ -98,8 +111,9 @@ directory exists or not.
 
 .SS File size limit 
 
-This utility cannot upload files larger than 150Mb. This limit is imposed
-by the Dropbox HTTP API.
+This version of this utility can upload files larger than 150Mb, despite
+that the Dropbox API makes this difficult. It simply uploads files in
+blocks smaller than this size.
 
 .SS Timestamps
 
@@ -109,6 +123,22 @@ It is not possible to synchronize timestamps, and not necessary for
 correct local/remote synchronization, because the
 Dropbox sync process uses hashes to determine whether
 a file is up to date.
+
+.SS Skipping files to speed up sync
+
+Synchronizing large numbers of files is problematic with this
+utility, because Dropbox does not store client-side timestamps. This
+means that all files must have their local and remote checksums 
+calculated, to see which files have changed. This process itself can be
+very time-consuming. To make it faster to keep large numbers of files
+in sync, certain local files can be excluded from checking (and thus
+from uploading). The '--days-old=N' setting excludes files that were
+last modified longer than N days ago. '--new-files-only' excludes from
+consideration any file that already exists on the server, whatever
+its last update on the local machine.
+
+Of course, these options have to be used with care, because it is
+all too easy to exclude files that really ought to be uploaded.
 
 .SS Authentication
 
