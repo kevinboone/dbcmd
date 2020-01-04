@@ -265,12 +265,3 @@ contributions from a number of other authors, whose details may be
 found in the source code.
 <p/>
 
-<h2>Downloads</h2>
-
-The most up-to-date source will always be found by checking out
-the 
-<a href="http://github.com/kevinboone/dbcmd">github repository</a>. 
-Alternatively, download the
-<a href="dbcmd.tar.gz">source code bundle</a>.
-
-
