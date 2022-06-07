@@ -302,9 +302,9 @@ static void cmd_get_one_remote_spec (const char *token,
       char *p = strrchr (remote, '/');
       if (p)
         {
-        *p = 0; // Is this safe? Do we use it later?
-        spec = strdup (p+1);
         path = strdup (remote);
+        path [p - remote] = 0;
+        spec = strdup (p+1);
         }
       else
         {
@@ -341,8 +341,11 @@ static void cmd_get_one_remote_spec (const char *token,
         char *filename = basename (pathcopy);
         // Not sure about this logic
         if ((fnmatch (spec, path, 0) == 0)
-          || (fnmatch (spec, filename, 0) == 0))
-          list_append (globbed_list, strdup (path)); 
+            || (fnmatch (spec, filename, 0) == 0)
+            || (fnmatch (remote, path, 0) == 0))
+          {
+          list_append (globbed_list, strdup (path));
+          } 
         // TODO include/exclude here
         free (pathcopy);
 	} 
