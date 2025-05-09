@@ -254,6 +254,25 @@ The Dropbox server is much more fussy than most Linux utilities are,
 about file and folder paths. In particular, multiple forward-slashes
 in a path name are treated as erroneous. 
 
+<h2>Limitations</h2>
+
+<p>
+<code>drobox delete</code> currently does not work at all, owing to an oddity in
+the response that the DB server returns. Fixing this is on the to-do list.
+</p>
+<p>
+It's slow, and this probably can't be improved. It's particularly slow for 
+whole-directory operations, because Dropbox uses checksums, rather than datestamps,
+to decide whether a file needs to be transferred. Calculating the checksums is 
+itself a time-consuming operation, even if the file does not need to be transferred.
+But, fundamentally, the public HTTP API is just slow.
+</p>
+<p>
+Storing the OAuth2 token locally is a security hazard. It's not worse a hazard
+than, for example, storing <code>ssh</code> private keys locally, and many (most?)
+Linux users do that. Still, it's a hazard, and one that isn't easy to mitigate,
+except by encrypting stuff and prompting for a key each time the program is used.
+</p>
 
 <h2>Legal, etc</h2>
 
@@ -264,13 +283,4 @@ you accept the risks involved in doing so. <code>dbcmd</code> contains
 contributions from a number of other authors, whose details may be
 found in the source code.
 <p/>
-
-<h2>Downloads</h2>
-
-The most up-to-date source will always be found by checking out
-the 
-<a href="http://github.com/kevinboone/dbcmd">github repository</a>. 
-Alternatively, download the
-<a href="dbcmd.tar.gz">source code bundle</a>.
-
 
