@@ -80,11 +80,12 @@ char *token_read_stored (void)
   FILE *f = fopen (filename, "r");
   if (f)
     {
-    char s[300];
-    memset (s, 0, sizeof (s));
-    fscanf (f, "%s", s);
+    char *s = NULL;
+    size_t n = 0;
+    getline (&s, &n, f);
+    if (s[strlen(s) - 1] == 10) s[strlen(s) - 1] = 0; 
     fclose (f);
-    ret = strdup (s);
+    ret = s; 
     }
   else
     {

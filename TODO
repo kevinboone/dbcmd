@@ -1,10 +1,12 @@
-Return valid errno values where possible (rather than just EINVAL as
-is nearly always the case now.) This means re-factoring the functions
-in dropbox.c quite extensively.
+Figure out why "dbcmd delete" isn't working. curl sends the correct API, but DB
+responds with something that upsets curl.
+
+Return valid errno values where possible (rather than just EINVAL as is nearly
+always the case now.) This means re-factoring the functions in dropbox.c quite
+extensively.
 
 Make list output sortable.
 
-Sort out problem where only long-form switches can be used after
-the command name, whilst short-form switches can be used before
-and after. This requires refactoring the way that command-line
-parsing is done.
+Sort out problem where only long-form switches can be used after the command
+name, whilst short-form switches can be used before and after. This requires
+refactoring the way that command-line parsing is done.

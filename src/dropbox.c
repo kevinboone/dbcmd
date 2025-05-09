@@ -209,41 +209,41 @@ void dropbox_get_file_info (const char *token, const char *path,
 	      else 
                 dropbox_stat_set_type (stat, DBSTAT_FILE);
 
-	    cJSON *j_path = cJSON_GetObjectItem (root, "path_display");
-	    if (j_path)
-	      dropbox_stat_set_path (stat, j_path->valuestring); 
-	    cJSON *j_name = cJSON_GetObjectItem (root, "name");
-	    if (j_name)
-	      dropbox_stat_set_name (stat, j_name->valuestring); 
+	      cJSON *j_path = cJSON_GetObjectItem (root, "path_display");
+	      if (j_path)
+		dropbox_stat_set_path (stat, j_path->valuestring); 
+	      cJSON *j_name = cJSON_GetObjectItem (root, "name");
+	      if (j_name)
+		dropbox_stat_set_name (stat, j_name->valuestring); 
 
 	      cJSON *j_size = cJSON_GetObjectItem (root, "size");
 	      if (j_size)
 		dropbox_stat_set_length (stat, j_size->valueint);      
 
 	      cJSON *j_server_modified  = cJSON_GetObjectItem 
-                 (root, "server_modified");
+		 (root, "server_modified");
 	      if (j_server_modified)
-	        {
-                dropbox_stat_set_server_modified 
-                  (stat, dropbox_parse_timestamp 
-                    (j_server_modified->valuestring)); 
-                }
+		{
+		dropbox_stat_set_server_modified 
+		  (stat, dropbox_parse_timestamp 
+		    (j_server_modified->valuestring)); 
+		}
 
 	      cJSON *j_client_modified  = cJSON_GetObjectItem 
-                 (root, "client_modified");
+		 (root, "client_modified");
 	      if (j_client_modified)
-	        {
-                dropbox_stat_set_client_modified 
-                  (stat, dropbox_parse_timestamp 
-                    (j_client_modified->valuestring)); 
-                }
+		{
+		dropbox_stat_set_client_modified 
+		  (stat, dropbox_parse_timestamp 
+		    (j_client_modified->valuestring)); 
+		}
 
 	      cJSON *j_hash  = cJSON_GetObjectItem 
-                 (root, "content_hash");
+		 (root, "content_hash");
 	      if (j_hash)
-	        {
-                dropbox_stat_set_hash (stat, j_hash->valuestring);
-                }
+		{
+		dropbox_stat_set_hash (stat, j_hash->valuestring);
+		}
 	      }
 	    else
 	      {
@@ -792,10 +792,12 @@ void dropbox_delete (const char *token, const char *path,
     CURLcode curl_code = curl_easy_perform (curl);
     if (curl_code == 0)
       {
+      log_debug ("curl_easy_perform returned no error code"); 
       dropbox_check_response_for_error (response.memory, error);
       }
     else
       {
+      log_debug ("curl_easy_perform returned error code %d", curl_code); 
       *error = strdup (curl_error); 
       }
 

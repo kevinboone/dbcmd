@@ -40,7 +40,7 @@ char *curl_issue_create_folder (const char *token, const char *new_path,
   if (f)
     {
     ret = utils_read_stream_to_end (f);
-    fclose (f);
+    pclose (f);
     }
   else
     {
@@ -72,7 +72,7 @@ char *curl_issue_delete_path (const char *token, const char *path,
   if (f)
     {
     ret = utils_read_stream_to_end (f);
-    fclose (f);
+    pclose (f);
     }
   else
     {
@@ -105,7 +105,7 @@ void curl_issue_download_file (const char *token, const char *source,
     int resp = atoi (s_resp);
     *http_code = resp;
     free (s_resp);
-    fclose (f);
+    pclose (f);
     }
   else
     {
@@ -136,7 +136,7 @@ char *curl_issue_get_file_info (const char *token, const char *path,
   if (f)
     {
     ret = utils_read_stream_to_end (f);
-    fclose (f);
+    pclose (f);
     }
   else
     {
@@ -180,7 +180,7 @@ char *curl_issue_list_files (const char *token, const char *path,
   if (f)
     {
     ret = utils_read_stream_to_end (f);
-    fclose (f);
+    pclose (f);
     }
   else
     {
@@ -212,7 +212,7 @@ char *curl_issue_move (const char *token, const char *old_path,
   if (f)
     {
     ret = utils_read_stream_to_end (f);
-    fclose (f);
+    pclose (f);
     }
   else
     {
@@ -241,7 +241,7 @@ char *curl_issue_token (const char *code, char **error)
   if (f)
     {
     ret = utils_read_stream_to_end (f);
-    fclose (f);
+    pclose (f);
     }
   else
     {
@@ -277,7 +277,7 @@ void curl_issue_upload_file (const char *token, const char *source,
     int resp = atoi (s_resp);
     *http_code = resp;
     free (s_resp);
-    fclose (f);
+    pclose (f);
     }
   else
     {

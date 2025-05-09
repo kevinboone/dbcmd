@@ -22,3 +22,7 @@ Complete re-implementation, with the following improvements:
 * Implemented "usage" command
 * Implemented progress indicator during upload and download
 
+0.0.4 May 2025
+* Fixed buffer overrun caused by the hugely increased size of Dropbox
+  OAuth2 tokens
+

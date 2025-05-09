@@ -1,5 +1,5 @@
 NAME    := dbcmd
-VERSION := 0.0.3
+VERSION := 0.0.4
 CC      :=  gcc 
 LIBS    := -lm -lcurl ${EXTRA_LIBS} 
 TARGET	:= $(NAME) 
@@ -27,7 +27,7 @@ clean:
 
 install: $(TARGET)
 	mkdir -p $(DESTDIR) $(BINDIR) $(MANDIR)
-	cp -p $(TARGET) ${BINDIR}
+	install -s -m 755 $(TARGET) ${BINDIR}
 	mkdir -p $(MANDIR)/man1
 	cp -p man1/* ${MANDIR}/man1/
 

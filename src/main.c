@@ -326,7 +326,7 @@ int main (int argc, char **argv)
   if (show_version)
     {
     printf ("%s " VERSION "\n", argv[0]);
-    printf ("Copyright (c)2017 Kevin Boone\n");
+    printf ("Copyright (c)2017-2025 Kevin Boone\n");
     printf ("Distributed under the terms of the GPL, v3.0\n");
     OUT
     exit (0);
