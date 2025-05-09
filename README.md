@@ -184,25 +184,23 @@ could just check timestamps.
 
 <h2>Bugs and limitations</h2>
 
-There is no limit -- other than time and memory -- on the number of files 
-that can be listed, searched, or copied in one 
-operation. However, since most operations first 
-require building a list of files held on the server and the local
-filesystem, and their hash values, and because Dropbox delivers its file
-lists relatively slowly, it is impractical to work on huge sets of
-files.
+There is no limit -- other than time and memory -- on the number of files that
+can be listed, searched, or copied in one operation. However, since most
+operations first require building a list of files held on the server and the
+local filesystem, and their hash values, and because Dropbox delivers its file
+lists relatively slowly, it is impractical to work on huge sets of files.
 <p/>
-There is additionally no limit on the size of a file that can be uploaded
-or downloaded. However, Dropbox is not really designed for handling
-huge files, and these operations are slow, and can use a great deal
-of memory. For the record, uploads are performed in 4B blocks by default. 
-Increasing this (e.g., <code>--buffersize=100</code>) 
-can improve speed a little, but at the expense of
-increased memory usage.
+There is additionally no limit on the size of a file that can be uploaded or
+downloaded. However, Dropbox is not really designed for handling huge files,
+and these operations are slow, and can use a great deal of memory. For the
+record, uploads are performed in 4MB blocks by default.  Increasing this (e.g.,
+<code>--buffsize=100</code>) can improve speed a little, but at the expense
+of increased memory usage.
 <p/>
 The file containing the stored authorization token is not encrypted. It could
 be encrypted, but this would require asking the user for a decryption key or
-password on every operation, which would be a nuisance.
+password on every operation, which would be a nuisance. This is undeniably
+a security hazard. 
 <p/>
 Dropbox does not store Linux file attributes -- not even the owner's
 permissions.  Files retrieved by <code>dbcmd</code> will usually have 644
@@ -254,25 +252,6 @@ The Dropbox server is much more fussy than most Linux utilities are,
 about file and folder paths. In particular, multiple forward-slashes
 in a path name are treated as erroneous. 
 
-<h2>Limitations</h2>
-
-<p>
-<code>drobox delete</code> currently does not work at all, owing to an oddity in
-the response that the DB server returns. Fixing this is on the to-do list.
-</p>
-<p>
-It's slow, and this probably can't be improved. It's particularly slow for 
-whole-directory operations, because Dropbox uses checksums, rather than datestamps,
-to decide whether a file needs to be transferred. Calculating the checksums is 
-itself a time-consuming operation, even if the file does not need to be transferred.
-But, fundamentally, the public HTTP API is just slow.
-</p>
-<p>
-Storing the OAuth2 token locally is a security hazard. It's not worse a hazard
-than, for example, storing <code>ssh</code> private keys locally, and many (most?)
-Linux users do that. Still, it's a hazard, and one that isn't easy to mitigate,
-except by encrypting stuff and prompting for a key each time the program is used.
-</p>
 
 <h2>Legal, etc</h2>
 
